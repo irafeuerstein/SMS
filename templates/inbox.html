@@ -1,0 +1,426 @@
+{% extends 'base.html' %}
+{% block title %}Inbox - SilverSky Partners{% endblock %}
+
+{% block content %}
+<header class="header">
+    <button class="header-btn hidden" id="backBtn" onclick="showConversations()">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="24" height="24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+    </button>
+    <h1 id="headerTitle">Inbox</h1>
+    <div style="width: 40px;"></div>
+</header>
+
+<main class="content" id="conversationsView">
+    <div id="conversationsList">
+        <div class="loading"><div class="spinner"></div></div>
+    </div>
+</main>
+
+<main class="content hidden" id="chatView" style="padding-bottom: 160px;">
+    <div class="message-list" id="messageList"></div>
+</main>
+
+<div class="compose-bar hidden" id="composeBar">
+    <div class="compose-bar-inner">
+        <div style="flex: 1;">
+            <div id="mediaPreviewContainer"></div>
+            <div id="charCountInbox" style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px; text-align: right;"></div>
+            <div style="display: flex; gap: 8px; align-items: flex-end;">
+                <button class="compose-btn" onclick="document.getElementById('mediaInput').click()" title="Attach file">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/>
+                    </svg>
+                </button>
+                <button class="compose-btn" onclick="startRecording('audio')" title="Voice memo">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>
+                    </svg>
+                </button>
+                <button class="compose-btn" onclick="startRecording('video')" title="Video message">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                </button>
+                <textarea class="compose-input" id="messageInput" placeholder="Type a message..." rows="1" oninput="updateCharCountInbox()" onkeydown="handleKeydown(event)"></textarea>
+                <button class="compose-btn send" onclick="sendMessage()" id="sendMsgBtn">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+    <input type="file" id="mediaInput" accept="image/*,video/*,audio/*" style="display: none;" onchange="handleMediaSelect(event)">
+</div>
+
+<div class="modal-overlay" id="recordModal">
+    <div class="modal" style="text-align: center;">
+        <div class="modal-handle"></div>
+        <h2 class="modal-title" id="recordTitle">Recording...</h2>
+        <div id="recordingIndicator" style="font-size: 3rem; margin: 20px 0;">🔴</div>
+        <div id="recordTimer" style="font-size: 1.5rem; color: var(--accent); margin-bottom: 20px;">0:00</div>
+        <video id="videoPreview" style="width: 100%; max-height: 200px; display: none; border-radius: 10px; margin-bottom: 16px;" muted playsinline></video>
+        <div class="flex gap-2">
+            <button class="btn btn-secondary" onclick="cancelRecording()" style="flex: 1;">Cancel</button>
+            <button class="btn" onclick="stopRecording()" style="flex: 1;">Stop & Attach</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let conversations = [];
+let currentPartnerId = null;
+let currentPartner = null;
+let pendingMedia = null;
+let mediaRecorder = null;
+let recordedChunks = [];
+let recordingTimer = null;
+let recordingSeconds = 0;
+let mediaStream = null;
+
+function updateCharCountInbox() {
+    const text = document.getElementById('messageInput').value;
+    const len = text.length;
+    const segments = Math.ceil(len / 160) || 1;
+    const el = document.getElementById('charCountInbox');
+    
+    if (len === 0) {
+        el.textContent = '';
+    } else {
+        el.textContent = `${len}/160 (${segments} segment${segments > 1 ? 's' : ''})`;
+        el.style.color = len > 160 ? 'var(--warning)' : 'var(--text-muted)';
+    }
+}
+
+async function loadConversations() {
+    try {
+        const res = await fetch('/api/conversations');
+        conversations = await res.json();
+        renderConversations();
+        
+        const params = new URLSearchParams(location.search);
+        const partnerId = params.get('partner');
+        if (partnerId) openConversation(parseInt(partnerId));
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+function renderConversations() {
+    const container = document.getElementById('conversationsList');
+    
+    if (conversations.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+                </svg>
+                <h3>No conversations yet</h3>
+                <p>Start by messaging a partner</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = conversations.map(c => `
+        <div class="convo-item" onclick="openConversation(${c.partner_id})">
+            <div class="convo-avatar">${getInitials(c.name)}</div>
+            <div class="convo-content">
+                <div class="convo-name">${escapeHtml(c.name)}</div>
+                <div class="convo-preview">${c.has_media ? '📎 ' : ''}${escapeHtml(c.latest_message || '')}</div>
+            </div>
+            <div class="convo-meta">
+                <div class="convo-time">${formatTime(c.latest_time)}</div>
+                ${c.unread > 0 ? `<div class="convo-badge">${c.unread}</div>` : ''}
+            </div>
+        </div>
+    `).join('');
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+async function openConversation(partnerId) {
+    currentPartnerId = partnerId;
+    
+    try {
+        const res = await fetch(`/api/partners/${partnerId}`);
+        currentPartner = await res.json();
+    } catch (err) {}
+    
+    document.getElementById('conversationsView').classList.add('hidden');
+    document.getElementById('chatView').classList.remove('hidden');
+    document.getElementById('composeBar').classList.remove('hidden');
+    document.getElementById('backBtn').classList.remove('hidden');
+    document.getElementById('headerTitle').textContent = currentPartner?.full_name || 'Chat';
+    
+    // Disable compose if opted out
+    if (currentPartner?.opted_out) {
+        document.getElementById('messageInput').disabled = true;
+        document.getElementById('messageInput').placeholder = 'Partner has opted out';
+        document.getElementById('sendMsgBtn').disabled = true;
+    } else {
+        document.getElementById('messageInput').disabled = false;
+        document.getElementById('messageInput').placeholder = 'Type a message...';
+        document.getElementById('sendMsgBtn').disabled = false;
+    }
+    
+    loadMessages();
+}
+
+function showConversations() {
+    currentPartnerId = null;
+    currentPartner = null;
+    pendingMedia = null;
+    document.getElementById('mediaPreviewContainer').innerHTML = '';
+    document.getElementById('charCountInbox').textContent = '';
+    
+    document.getElementById('conversationsView').classList.remove('hidden');
+    document.getElementById('chatView').classList.add('hidden');
+    document.getElementById('composeBar').classList.add('hidden');
+    document.getElementById('backBtn').classList.add('hidden');
+    document.getElementById('headerTitle').textContent = 'Inbox';
+    
+    history.replaceState(null, '', '/inbox');
+    loadConversations();
+}
+
+async function loadMessages() {
+    if (!currentPartnerId) return;
+    
+    try {
+        const res = await fetch(`/api/messages/${currentPartnerId}`);
+        const messages = await res.json();
+        renderMessages(messages);
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+function renderMessages(messages) {
+    const container = document.getElementById('messageList');
+    
+    if (messages.length === 0) {
+        container.innerHTML = `<div class="empty-state"><p>No messages yet. Send the first one!</p></div>`;
+        return;
+    }
+    
+    container.innerHTML = messages.map(m => `
+        <div class="message ${m.direction}">
+            ${m.media_url ? renderMedia(m.media_url, m.media_type) : ''}
+            ${m.body ? `<div>${escapeHtml(m.body)}</div>` : ''}
+            <div class="message-time">${formatMessageTime(m.created_at)}</div>
+        </div>
+    `).join('');
+    
+    container.scrollTop = container.scrollHeight;
+}
+
+function renderMedia(url, type) {
+    if (type === 'image') return `<div class="message-media"><img src="${url}" alt="Image" style="max-width:100%;border-radius:8px;cursor:pointer;" onclick="window.open('${url}')"></div>`;
+    if (type === 'video') return `<div class="message-media"><video src="${url}" controls style="max-width:100%;border-radius:8px;"></video></div>`;
+    if (type === 'audio') return `<div class="message-media"><audio src="${url}" controls style="width:100%;"></audio></div>`;
+    return '';
+}
+
+async function sendMessage() {
+    const input = document.getElementById('messageInput');
+    const message = input.value.trim();
+    
+    if (!message && !pendingMedia) return;
+    
+    const data = { partner_id: currentPartnerId, message };
+    if (pendingMedia) {
+        data.media_url = pendingMedia.url;
+        data.media_type = pendingMedia.type;
+    }
+    
+    document.getElementById('sendMsgBtn').disabled = true;
+    
+    try {
+        const res = await fetch('/api/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await res.json();
+        if (result.success) {
+            input.value = '';
+            pendingMedia = null;
+            document.getElementById('mediaPreviewContainer').innerHTML = '';
+            document.getElementById('charCountInbox').textContent = '';
+            loadMessages();
+        } else {
+            alert(result.error || 'Failed to send');
+        }
+    } catch (err) {
+        alert('Failed to send message');
+    } finally {
+        if (!currentPartner?.opted_out) {
+            document.getElementById('sendMsgBtn').disabled = false;
+        }
+    }
+}
+
+function handleKeydown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+    }
+}
+
+async function handleMediaSelect(e) {
+    const file = e.target.files[0];
+    if (file) await uploadMedia(file);
+    e.target.value = '';
+}
+
+async function uploadMedia(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+        const res = await fetch('/api/upload', { method: 'POST', body: formData });
+        const result = await res.json();
+        if (result.success) {
+            pendingMedia = { url: result.url, type: result.media_type };
+            showMediaPreview(file, result.media_type);
+        } else {
+            alert(result.error || 'Upload failed');
+        }
+    } catch (err) {
+        alert('Upload failed');
+    }
+}
+
+function showMediaPreview(file, type) {
+    const container = document.getElementById('mediaPreviewContainer');
+    const url = URL.createObjectURL(file);
+    
+    let preview = '';
+    if (type === 'image') preview = `<img src="${url}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;">`;
+    else if (type === 'video') preview = `<video src="${url}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;"></video>`;
+    else preview = `<div style="padding:8px;">🎵 Audio</div>`;
+    
+    container.innerHTML = `
+        <div class="media-preview">
+            ${preview}
+            <div class="media-preview-info">${type}</div>
+            <button class="media-preview-remove" onclick="removeMediaPreview()">✕</button>
+        </div>
+    `;
+}
+
+function removeMediaPreview() {
+    pendingMedia = null;
+    document.getElementById('mediaPreviewContainer').innerHTML = '';
+}
+
+let currentRecordingType = null;
+
+async function startRecording(type) {
+    currentRecordingType = type;
+    recordedChunks = [];
+    recordingSeconds = 0;
+    
+    try {
+        const constraints = type === 'video' ? { audio: true, video: { facingMode: 'user' } } : { audio: true };
+        mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+        
+        document.getElementById('recordTitle').textContent = type === 'video' ? 'Recording Video...' : 'Recording Voice...';
+        document.getElementById('recordTimer').textContent = '0:00';
+        
+        const videoPreview = document.getElementById('videoPreview');
+        if (type === 'video') {
+            videoPreview.style.display = 'block';
+            videoPreview.srcObject = mediaStream;
+            videoPreview.play();
+        } else {
+            videoPreview.style.display = 'none';
+        }
+        
+        mediaRecorder = new MediaRecorder(mediaStream, { mimeType: type === 'video' ? 'video/webm' : 'audio/webm' });
+        mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+        mediaRecorder.onstop = async () => {
+            const recType = currentRecordingType;
+            const mimeType = recType === 'video' ? 'video/webm' : 'audio/webm';
+            const blob = new Blob(recordedChunks, { type: mimeType });
+            const file = new File([blob], 'recording.webm', { type: mimeType });
+            await uploadMediaWithType(file, recType);
+        };
+        
+        mediaRecorder.start();
+        recordingTimer = setInterval(() => {
+            recordingSeconds++;
+            document.getElementById('recordTimer').textContent = `${Math.floor(recordingSeconds/60)}:${(recordingSeconds%60).toString().padStart(2,'0')}`;
+        }, 1000);
+        
+        openModal('recordModal');
+    } catch (err) {
+        alert('Could not access camera/microphone');
+    }
+}
+
+async function uploadMediaWithType(file, type) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('media_type', type);
+    
+    try {
+        const res = await fetch('/api/upload', { method: 'POST', body: formData });
+        const result = await res.json();
+        if (result.success) {
+            pendingMedia = { url: result.url, type: result.media_type };
+            showMediaPreview(file, result.media_type);
+        } else {
+            alert(result.error || 'Upload failed');
+        }
+    } catch (err) {
+        alert('Upload failed');
+    }
+}
+
+function stopRecording() {
+    if (mediaRecorder?.state !== 'inactive') mediaRecorder.stop();
+    cleanupRecording();
+    closeModal('recordModal');
+}
+
+function cancelRecording() {
+    if (mediaRecorder?.state !== 'inactive') mediaRecorder.stop();
+    recordedChunks = [];
+    cleanupRecording();
+    closeModal('recordModal');
+}
+
+function cleanupRecording() {
+    if (recordingTimer) { clearInterval(recordingTimer); recordingTimer = null; }
+    if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+    document.getElementById('videoPreview').srcObject = null;
+}
+
+function getInitials(name) { return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase(); }
+function formatTime(iso) {
+    if (!iso) return '';
+    const diff = Date.now() - new Date(iso);
+    if (diff < 60000) return 'Now';
+    if (diff < 3600000) return Math.floor(diff/60000) + 'm';
+    if (diff < 86400000) return Math.floor(diff/3600000) + 'h';
+    return new Date(iso).toLocaleDateString();
+}
+function formatMessageTime(iso) { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+loadConversations();
+</script>
+{% endblock %}
