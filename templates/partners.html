@@ -1,0 +1,506 @@
+{% extends 'base.html' %}
+{% block title %}Partners - SilverSky Partners{% endblock %}
+
+{% block content %}
+<header class="header">
+    <h1>Partners</h1>
+    <button class="header-btn" onclick="openAddModal()">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="24" height="24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+    </button>
+</header>
+
+<main class="content">
+    <!-- Search Bar -->
+    <div class="form-group" style="margin-bottom: 12px;">
+        <input type="text" class="form-input" id="searchInput" placeholder="Search partners..." oninput="debounceSearch()">
+    </div>
+    
+    <!-- Filter Bar -->
+    <div class="filter-bar" id="filterBar">
+        <button class="filter-chip" onclick="toggleFilter('new')" id="filterNew">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+            New Only
+        </button>
+        <button class="filter-chip" onclick="openFilterModal('region')">
+            Region <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <button class="filter-chip" onclick="openFilterModal('tsd')">
+            TSD <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <button class="filter-chip" onclick="openFilterModal('product')">
+            Product <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+    </div>
+    
+    <div id="activeFilters" class="chips mb-3" style="display: none;"></div>
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <div id="partnerCount" style="font-size: 0.8rem; color: var(--text-muted);"></div>
+        <div style="display: flex; gap: 8px;">
+            <button class="btn btn-sm btn-ghost" onclick="toggleBulkMode()" id="bulkModeBtn">☑️ Select</button>
+            <button class="btn btn-sm btn-ghost" onclick="document.getElementById('csvInput').click()">📥 Import</button>
+            <button class="btn btn-sm btn-ghost" onclick="exportPartners()">📤 Export</button>
+        </div>
+    </div>
+    <input type="file" id="csvInput" accept=".csv" style="display: none;" onchange="importCSV(event)">
+    
+    <!-- Bulk Action Bar -->
+    <div id="bulkActionBar" style="display: none; background: var(--bg-card); border: 1px solid var(--accent); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <span id="bulkSelectedCount" style="font-weight: 600; color: var(--accent);">0</span>
+                <span style="color: var(--text-secondary); font-size: 0.85rem;"> selected</span>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button class="btn btn-sm" onclick="bulkMessage()">Message</button>
+                <button class="btn btn-sm btn-secondary" onclick="bulkDelete()" style="color: var(--error);">Delete</button>
+                <button class="btn btn-sm btn-ghost" onclick="toggleBulkMode()">Cancel</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="partnersList"><div class="loading"><div class="spinner"></div></div></div>
+</main>
+
+<!-- Add/Edit Partner Modal -->
+<div class="modal-overlay" id="editModal">
+    <div class="modal">
+        <div class="modal-handle"></div>
+        <h2 class="modal-title" id="editModalTitle">Add Partner</h2>
+        
+        <form id="editForm" onsubmit="savePartner(event)">
+            <input type="hidden" id="editId">
+            <div class="flex gap-2">
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label">First Name *</label>
+                    <input type="text" class="form-input" id="editFirstName" required>
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label">Last Name</label>
+                    <input type="text" class="form-input" id="editLastName">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Company</label>
+                <input type="text" class="form-input" id="editCompany">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Phone *</label>
+                <input type="tel" class="form-input" id="editPhone" placeholder="+1 or 10-digit" required>
+                <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 4px;">Will auto-format to +1 if not provided</div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Region</label>
+                <select class="form-select" id="editRegionId">
+                    <option value="">Select region...</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">TSD</label>
+                <select class="form-select" id="editTsdId">
+                    <option value="">Select TSD...</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Products</label>
+                <div class="checkbox-group" id="editProductCheckboxes"></div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Notes</label>
+                <textarea class="form-textarea" id="editNotes" rows="2"></textarea>
+            </div>
+            
+            <div class="flex gap-2 mt-4">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('editModal')" style="flex: 1;">Cancel</button>
+                <button type="submit" class="btn" style="flex: 1;" id="editSubmitBtn">Add Partner</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- View Partner Modal -->
+<div class="modal-overlay" id="viewModal">
+    <div class="modal">
+        <div class="modal-handle"></div>
+        <div id="viewContent"></div>
+    </div>
+</div>
+
+<!-- Filter Modal -->
+<div class="modal-overlay" id="filterModal">
+    <div class="modal">
+        <div class="modal-handle"></div>
+        <h2 class="modal-title" id="filterModalTitle">Filter</h2>
+        <div id="filterOptions"></div>
+        <div class="flex gap-2 mt-4">
+            <button class="btn btn-secondary" onclick="closeModal('filterModal')" style="flex: 1;">Cancel</button>
+            <button class="btn" onclick="applyFilter()" style="flex: 1;">Apply</button>
+        </div>
+    </div>
+</div>
+
+<!-- Import Result Modal -->
+<div class="modal-overlay" id="importModal">
+    <div class="modal">
+        <div class="modal-handle"></div>
+        <h2 class="modal-title">Import Results</h2>
+        <div id="importResults"></div>
+        <button class="btn btn-block mt-4" onclick="closeModal('importModal')">Done</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let partners = [];
+let regions = [];
+let tsds = [];
+let products = [];
+let activeFilters = { new_only: false, region_ids: [], tsd_ids: [], product_ids: [] };
+let currentFilterType = null;
+let searchTimeout = null;
+let bulkMode = false;
+let selectedPartnerIds = new Set();
+
+async function loadData() {
+    const [r1, r2, r3] = await Promise.all([fetch('/api/regions'), fetch('/api/tsds'), fetch('/api/products')]);
+    regions = await r1.json();
+    tsds = await r2.json();
+    products = await r3.json();
+    populateDropdowns();
+    loadPartners();
+}
+
+function populateDropdowns() {
+    document.getElementById('editRegionId').innerHTML = '<option value="">Select region...</option>' + 
+        regions.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+    document.getElementById('editTsdId').innerHTML = '<option value="">Select TSD...</option>' + 
+        tsds.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+    document.getElementById('editProductCheckboxes').innerHTML = products.map(p => `
+        <label class="checkbox-item"><input type="checkbox" value="${p.id}"><span>${p.name}</span></label>
+    `).join('');
+}
+
+function debounceSearch() {
+    if (searchTimeout) clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(loadPartners, 300);
+}
+
+async function loadPartners() {
+    let url = '/api/partners?';
+    
+    const search = document.getElementById('searchInput').value.trim();
+    if (search) url += `search=${encodeURIComponent(search)}&`;
+    
+    if (activeFilters.new_only) url += 'new_only=true&';
+    activeFilters.region_ids.forEach(id => url += `region_id=${id}&`);
+    activeFilters.tsd_ids.forEach(id => url += `tsd_id=${id}&`);
+    activeFilters.product_ids.forEach(id => url += `product_id=${id}&`);
+    
+    partners = await (await fetch(url)).json();
+    renderPartners();
+    renderActiveFilters();
+}
+
+function renderPartners() {
+    const container = document.getElementById('partnersList');
+    document.getElementById('partnerCount').textContent = `${partners.length} partner${partners.length !== 1 ? 's' : ''}`;
+    
+    if (partners.length === 0) {
+        container.innerHTML = `<div class="empty-state"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg><h3>No partners found</h3><p>Add a partner or adjust your filters</p></div>`;
+        return;
+    }
+    
+    container.innerHTML = partners.map(p => `
+        <div class="card" onclick="${bulkMode ? `togglePartnerSelect(${p.id}, event)` : `viewPartner(${p.id})`}" style="${bulkMode && selectedPartnerIds.has(p.id) ? 'border-color: var(--accent);' : ''}">
+            <div class="card-header">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    ${bulkMode ? `<input type="checkbox" ${selectedPartnerIds.has(p.id) ? 'checked' : ''} onclick="togglePartnerSelect(${p.id}, event)" style="width: 18px; height: 18px;">` : ''}
+                    <div>
+                        <div class="card-title">${escapeHtml(p.full_name)}${p.opted_out ? ' <span style="color: var(--error); font-size: 0.7rem;">OPTED OUT</span>' : ''}</div>
+                        <div class="card-subtitle">${escapeHtml(p.company || 'No company')}</div>
+                    </div>
+                </div>
+                ${p.is_new ? '<span class="chip new">New</span>' : ''}
+            </div>
+            <div class="chips">
+                ${p.region ? `<span class="chip">${escapeHtml(p.region)}</span>` : ''}
+                ${p.tsd ? `<span class="chip">${escapeHtml(p.tsd)}</span>` : ''}
+                ${p.products.map(prod => `<span class="chip accent">${escapeHtml(prod.name)}</span>`).join('')}
+            </div>
+        </div>
+    `).join('');
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function renderActiveFilters() {
+    const container = document.getElementById('activeFilters');
+    const chips = [];
+    if (activeFilters.new_only) chips.push({ type: 'new', label: 'New Only' });
+    activeFilters.region_ids.forEach(id => { const r = regions.find(x => x.id == id); if (r) chips.push({ type: 'region', id, label: r.name }); });
+    activeFilters.tsd_ids.forEach(id => { const t = tsds.find(x => x.id == id); if (t) chips.push({ type: 'tsd', id, label: t.name }); });
+    activeFilters.product_ids.forEach(id => { const p = products.find(x => x.id == id); if (p) chips.push({ type: 'product', id, label: p.name }); });
+    
+    if (chips.length === 0) { container.style.display = 'none'; return; }
+    container.style.display = 'flex';
+    container.innerHTML = chips.map(c => `<span class="chip accent" style="cursor: pointer;" onclick="removeFilter('${c.type}', ${c.id || 0})">${escapeHtml(c.label)} ✕</span>`).join('');
+}
+
+function toggleFilter(type) {
+    if (type === 'new') {
+        activeFilters.new_only = !activeFilters.new_only;
+        document.getElementById('filterNew').classList.toggle('active', activeFilters.new_only);
+        loadPartners();
+    }
+}
+
+function openFilterModal(type) {
+    currentFilterType = type;
+    const title = document.getElementById('filterModalTitle');
+    const options = document.getElementById('filterOptions');
+    let items = [], selectedIds = [];
+    
+    if (type === 'region') { title.textContent = 'Select Regions'; items = regions; selectedIds = activeFilters.region_ids; }
+    else if (type === 'tsd') { title.textContent = 'Select TSDs'; items = tsds; selectedIds = activeFilters.tsd_ids; }
+    else if (type === 'product') { title.textContent = 'Select Products'; items = products; selectedIds = activeFilters.product_ids; }
+    
+    options.innerHTML = items.map(item => `<label class="checkbox-item" style="width: 100%; margin-bottom: 8px;"><input type="checkbox" value="${item.id}" ${selectedIds.includes(item.id) ? 'checked' : ''}><span>${escapeHtml(item.name)}</span></label>`).join('');
+    openModal('filterModal');
+}
+
+function applyFilter() {
+    const ids = Array.from(document.querySelectorAll('#filterOptions input:checked')).map(cb => parseInt(cb.value));
+    if (currentFilterType === 'region') activeFilters.region_ids = ids;
+    else if (currentFilterType === 'tsd') activeFilters.tsd_ids = ids;
+    else if (currentFilterType === 'product') activeFilters.product_ids = ids;
+    closeModal('filterModal');
+    loadPartners();
+}
+
+function removeFilter(type, id) {
+    if (type === 'new') { activeFilters.new_only = false; document.getElementById('filterNew').classList.remove('active'); }
+    else if (type === 'region') activeFilters.region_ids = activeFilters.region_ids.filter(i => i !== id);
+    else if (type === 'tsd') activeFilters.tsd_ids = activeFilters.tsd_ids.filter(i => i !== id);
+    else if (type === 'product') activeFilters.product_ids = activeFilters.product_ids.filter(i => i !== id);
+    loadPartners();
+}
+
+function openAddModal() {
+    document.getElementById('editModalTitle').textContent = 'Add Partner';
+    document.getElementById('editSubmitBtn').textContent = 'Add Partner';
+    document.getElementById('editId').value = '';
+    document.getElementById('editForm').reset();
+    document.querySelectorAll('#editProductCheckboxes input').forEach(cb => cb.checked = false);
+    openModal('editModal');
+}
+
+function openEditModal(id) {
+    const partner = partners.find(p => p.id === id);
+    if (!partner) return;
+    
+    document.getElementById('editModalTitle').textContent = 'Edit Partner';
+    document.getElementById('editSubmitBtn').textContent = 'Save Changes';
+    document.getElementById('editId').value = partner.id;
+    document.getElementById('editFirstName').value = partner.first_name;
+    document.getElementById('editLastName').value = partner.last_name || '';
+    document.getElementById('editCompany').value = partner.company || '';
+    document.getElementById('editPhone').value = partner.phone;
+    document.getElementById('editRegionId').value = partner.region_id || '';
+    document.getElementById('editTsdId').value = partner.tsd_id || '';
+    document.getElementById('editNotes').value = partner.notes || '';
+    
+    const productIds = partner.products.map(p => p.id);
+    document.querySelectorAll('#editProductCheckboxes input').forEach(cb => {
+        cb.checked = productIds.includes(parseInt(cb.value));
+    });
+    
+    closeModal('viewModal');
+    openModal('editModal');
+}
+
+async function savePartner(e) {
+    e.preventDefault();
+    const id = document.getElementById('editId').value;
+    const productIds = Array.from(document.querySelectorAll('#editProductCheckboxes input:checked')).map(cb => parseInt(cb.value));
+    
+    const data = {
+        first_name: document.getElementById('editFirstName').value,
+        last_name: document.getElementById('editLastName').value,
+        company: document.getElementById('editCompany').value,
+        phone: document.getElementById('editPhone').value,
+        region_id: document.getElementById('editRegionId').value || null,
+        tsd_id: document.getElementById('editTsdId').value || null,
+        product_ids: productIds,
+        notes: document.getElementById('editNotes').value
+    };
+    
+    const url = id ? `/api/partners/${id}` : '/api/partners';
+    const method = id ? 'PUT' : 'POST';
+    
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+    if (res.ok) {
+        closeModal('editModal');
+        showToast(id ? 'Partner updated' : 'Partner added');
+        loadPartners();
+    } else {
+        const err = await res.json();
+        showToast(err.error || 'Failed to save partner', 'error');
+    }
+}
+
+function viewPartner(id) {
+    const p = partners.find(x => x.id === id);
+    if (!p) return;
+    
+    document.getElementById('viewContent').innerHTML = `
+        <h2 class="modal-title">${escapeHtml(p.full_name)}</h2>
+        <p class="card-subtitle" style="margin-bottom: 16px;">${escapeHtml(p.company || 'No company')}</p>
+        
+        ${p.opted_out ? '<div style="background: var(--error); color: white; padding: 8px; border-radius: 8px; margin-bottom: 16px; text-align: center;">⚠️ This partner has opted out of messages</div>' : ''}
+        
+        <div class="form-group"><label class="form-label">Phone</label><div>${escapeHtml(p.phone)}</div></div>
+        <div class="form-group"><label class="form-label">Region</label><div>${escapeHtml(p.region || 'Not set')}</div></div>
+        <div class="form-group"><label class="form-label">TSD</label><div>${escapeHtml(p.tsd || 'Not set')}</div></div>
+        <div class="form-group"><label class="form-label">Products</label><div class="chips">${p.products.length > 0 ? p.products.map(x => `<span class="chip accent">${escapeHtml(x.name)}</span>`).join('') : '<span class="text-muted">None</span>'}</div></div>
+        ${p.notes ? `<div class="form-group"><label class="form-label">Notes</label><div style="color: var(--text-secondary);">${escapeHtml(p.notes)}</div></div>` : ''}
+        <div class="form-group"><label class="form-label">Status</label><div>${p.is_new ? '<span class="chip new">Never contacted</span>' : `Last contacted: ${new Date(p.last_contacted).toLocaleDateString()}`}</div></div>
+        
+        <div class="flex gap-2 mt-4">
+            <button class="btn" onclick="messagePartner(${p.id})" style="flex: 1;" ${p.opted_out ? 'disabled' : ''}>Message</button>
+            <button class="btn btn-secondary" onclick="openEditModal(${p.id})">Edit</button>
+            <button class="btn btn-secondary" onclick="deletePartner(${p.id})" style="color: var(--error);">Delete</button>
+        </div>
+    `;
+    openModal('viewModal');
+}
+
+function messagePartner(id) { closeModal('viewModal'); location.href = `/inbox?partner=${id}`; }
+
+async function deletePartner(id) {
+    if (!confirm('Delete this partner? This will also delete all their messages.')) return;
+    try {
+        const res = await fetch(`/api/partners/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+            closeModal('viewModal');
+            showToast('Partner deleted');
+            loadPartners();
+        } else {
+            showToast('Failed to delete partner', 'error');
+        }
+    } catch (err) {
+        showToast('Failed to delete partner', 'error');
+    }
+}
+
+async function importCSV(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+        const res = await fetch('/api/partners/import', { method: 'POST', body: formData });
+        const result = await res.json();
+        
+        document.getElementById('importResults').innerHTML = `
+            <div style="text-align: center; padding: 20px;">
+                <div style="font-size: 3rem; margin-bottom: 16px;">✅</div>
+                <div style="font-size: 1.5rem; color: var(--accent);">${result.imported} imported</div>
+                <div style="color: var(--text-muted); margin-top: 8px;">${result.skipped} skipped (duplicates or invalid)</div>
+                ${result.errors?.length > 0 ? `<div style="color: var(--error); margin-top: 8px; font-size: 0.8rem;">${result.errors.join('<br>')}</div>` : ''}
+            </div>
+        `;
+        openModal('importModal');
+        loadPartners();
+    } catch (err) {
+        alert('Import failed');
+    }
+    
+    e.target.value = '';
+}
+
+function exportPartners() {
+    window.location.href = '/api/partners/export';
+}
+
+// Bulk mode functions
+function toggleBulkMode() {
+    bulkMode = !bulkMode;
+    selectedPartnerIds.clear();
+    document.getElementById('bulkActionBar').style.display = bulkMode ? 'block' : 'none';
+    document.getElementById('bulkModeBtn').textContent = bulkMode ? '✓ Selecting' : '☑️ Select';
+    document.getElementById('bulkModeBtn').style.color = bulkMode ? 'var(--accent)' : '';
+    updateBulkCount();
+    renderPartners();
+}
+
+function togglePartnerSelect(id, e) {
+    e.stopPropagation();
+    if (selectedPartnerIds.has(id)) {
+        selectedPartnerIds.delete(id);
+    } else {
+        selectedPartnerIds.add(id);
+    }
+    updateBulkCount();
+    renderPartners();
+}
+
+function updateBulkCount() {
+    document.getElementById('bulkSelectedCount').textContent = selectedPartnerIds.size;
+}
+
+function bulkMessage() {
+    if (selectedPartnerIds.size === 0) {
+        showToast('Select at least one partner', 'warning');
+        return;
+    }
+    // Store selected IDs and redirect to broadcast
+    sessionStorage.setItem('bulkPartnerIds', JSON.stringify([...selectedPartnerIds]));
+    window.location.href = '/broadcast?bulk=true';
+}
+
+async function bulkDelete() {
+    if (selectedPartnerIds.size === 0) {
+        showToast('Select at least one partner', 'warning');
+        return;
+    }
+    
+    if (!confirm(`Delete ${selectedPartnerIds.size} partner(s)? This will also delete all their messages.`)) return;
+    
+    let deleted = 0;
+    for (const id of selectedPartnerIds) {
+        try {
+            const res = await fetch(`/api/partners/${id}`, { method: 'DELETE' });
+            if (res.ok) deleted++;
+        } catch (err) {}
+    }
+    
+    showToast(`Deleted ${deleted} partner(s)`);
+    selectedPartnerIds.clear();
+    toggleBulkMode();
+    loadPartners();
+}
+
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) o.classList.remove('active'); }));
+
+loadData();
+</script>
+{% endblock %}

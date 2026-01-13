@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - SilverSky Partners</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a12;
+            color: #f0f0f5;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .login-card {
+            background: #12121f;
+            border-radius: 16px;
+            padding: 32px;
+            width: 100%;
+            max-width: 360px;
+            border: 1px solid #252538;
+        }
+        .logo {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        .logo h1 {
+            color: #00d4aa;
+            font-size: 1.5rem;
+            margin-bottom: 4px;
+        }
+        .logo p {
+            color: #5a5a70;
+            font-size: 0.85rem;
+        }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        .form-label {
+            display: block;
+            color: #9090a8;
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .form-input {
+            width: 100%;
+            background: #0a0a12;
+            border: 1px solid #252538;
+            border-radius: 10px;
+            padding: 12px 14px;
+            color: #f0f0f5;
+            font-size: 1rem;
+        }
+        .form-input:focus {
+            outline: none;
+            border-color: #00d4aa;
+        }
+        .btn {
+            width: 100%;
+            background: #00d4aa;
+            color: #0a0a12;
+            border: none;
+            padding: 14px;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 8px;
+        }
+        .btn:hover {
+            filter: brightness(1.1);
+        }
+        .error {
+            background: rgba(255, 85, 102, 0.1);
+            border: 1px solid #ff5566;
+            color: #ff5566;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="logo">
+            <h1>SilverSky Partners</h1>
+            <p>Partner SMS Platform</p>
+        </div>
+        
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        
+        <form method="POST">
+            <div class="form-group">
+                <label class="form-label">Username</label>
+                <input type="text" name="username" class="form-input" required autofocus>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Password</label>
+                <input type="password" name="password" class="form-input" required>
+            </div>
+            <button type="submit" class="btn">Sign In</button>
+        </form>
+    </div>
+</body>
+</html>
