@@ -1,8 +1,0 @@
-__pycache__/
-*.py[cod]
-*.db
-.env
-venv/
-uploads/
-*.sqlite3
-.DS_Store
