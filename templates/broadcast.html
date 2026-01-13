@@ -1,0 +1,170 @@
+{% extends 'base.html' %}
+{% block title %}Broadcast - SilverSky Partners{% endblock %}
+
+{% block content %}
+<header class="header">
+    <h1>Broadcast</h1>
+</header>
+
+<main class="content">
+    <div class="card">
+        <h3 style="font-size: 0.9rem; margin-bottom: 12px;">1. Select Partners</h3>
+        
+        <div class="form-group">
+            <label class="form-label">Region</label>
+            <select class="form-select" id="regionFilter" onchange="loadPartners()">
+                <option value="">All Regions</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label">TSD</label>
+            <select class="form-select" id="tsdFilter" onchange="loadPartners()">
+                <option value="">All TSDs</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label">Product</label>
+            <select class="form-select" id="productFilter" onchange="loadPartners()">
+                <option value="">All Products</option>
+            </select>
+        </div>
+        
+        <label class="checkbox-item" style="margin-bottom: 12px;">
+            <input type="checkbox" id="newOnlyFilter" onchange="loadPartners()">
+            <span>New partners only</span>
+        </label>
+        
+        <div id="partnerCount" style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 8px;"></div>
+        
+        <div id="partnerSelectList" style="max-height: 200px; overflow-y: auto; background: var(--bg-dark); border-radius: 10px; padding: 8px;"></div>
+        
+        <div class="flex gap-2 mt-3">
+            <button class="btn btn-sm btn-ghost" onclick="selectAll()">Select All</button>
+            <button class="btn btn-sm btn-ghost" onclick="selectNone()">Clear</button>
+        </div>
+    </div>
+    
+    <div class="card">
+        <h3 style="font-size: 0.9rem; margin-bottom: 12px;">2. Compose Message</h3>
+        
+        <div class="form-group">
+            <textarea class="form-textarea" id="messageText" rows="4" placeholder="Hey {{first_name}}, wanted to reach out about..."></textarea>
+            <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 6px;">
+                Use: {{first_name}}, {{name}}, {{company}}, {{region}}, {{tsd}}
+            </div>
+        </div>
+        
+        <div id="mediaPreviewBroadcast"></div>
+        
+        <div class="flex gap-2">
+            <button class="btn btn-sm btn-secondary" onclick="document.getElementById('broadcastMediaInput').click()">📎 File</button>
+            <button class="btn btn-sm btn-secondary" onclick="startRec('audio')">🎤 Voice</button>
+            <button class="btn btn-sm btn-secondary" onclick="startRec('video')">📹 Video</button>
+        </div>
+        <input type="file" id="broadcastMediaInput" accept="image/*,video/*,audio/*" style="display: none;" onchange="handleMedia(event)">
+    </div>
+    
+    <button class="btn btn-block" onclick="sendBroadcast()">
+        Send to <span id="selectedCount">0</span> Partners
+    </button>
+</main>
+
+<div class="modal-overlay" id="recordModal">
+    <div class="modal" style="text-align: center;">
+        <div class="modal-handle"></div>
+        <h2 class="modal-title" id="recordTitle">Recording...</h2>
+        <div style="font-size: 3rem; margin: 20px 0;">🔴</div>
+        <div id="recordTimer" style="font-size: 1.5rem; color: var(--accent); margin-bottom: 20px;">0:00</div>
+        <video id="videoPreview" style="width: 100%; max-height: 200px; display: none; border-radius: 10px; margin-bottom: 16px;" muted playsinline></video>
+        <div class="flex gap-2">
+            <button class="btn btn-secondary" onclick="cancelRec()" style="flex: 1;">Cancel</button>
+            <button class="btn" onclick="stopRec()" style="flex: 1;">Attach</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let partners=[], broadcastMedia=null, mediaRecorder=null, recordedChunks=[], recordingTimer=null, recordingSeconds=0, mediaStream=null;
+
+async function loadData() {
+    const [r1,r2,r3] = await Promise.all([fetch('/api/regions'),fetch('/api/tsds'),fetch('/api/products')]);
+    const [regions,tsds,products] = await Promise.all([r1.json(),r2.json(),r3.json()]);
+    document.getElementById('regionFilter').innerHTML = '<option value="">All</option>'+regions.map(r=>`<option value="${r.id}">${r.name}</option>`).join('');
+    document.getElementById('tsdFilter').innerHTML = '<option value="">All</option>'+tsds.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+    document.getElementById('productFilter').innerHTML = '<option value="">All</option>'+products.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+    loadPartners();
+}
+
+async function loadPartners() {
+    let url = '/api/partners?';
+    const r=document.getElementById('regionFilter').value, t=document.getElementById('tsdFilter').value, p=document.getElementById('productFilter').value, n=document.getElementById('newOnlyFilter').checked;
+    if(r) url+=`region_id=${r}&`; if(t) url+=`tsd_id=${t}&`; if(p) url+=`product_id=${p}&`; if(n) url+='new_only=true&';
+    partners = await (await fetch(url)).json();
+    renderList();
+}
+
+function renderList() {
+    const c = document.getElementById('partnerSelectList');
+    document.getElementById('partnerCount').textContent = `${partners.length} partners`;
+    if(!partners.length) { c.innerHTML='<div style="text-align:center;padding:20px;color:var(--text-muted)">No matches</div>'; updateCount(); return; }
+    c.innerHTML = partners.map(p=>`<label class="checkbox-item" style="width:100%;margin-bottom:6px;"><input type="checkbox" value="${p.id}" checked onchange="updateCount()"><span>${p.full_name} <span style="color:var(--text-muted)">${p.company||''}</span></span></label>`).join('');
+    updateCount();
+}
+
+function selectAll() { document.querySelectorAll('#partnerSelectList input').forEach(cb=>cb.checked=true); updateCount(); }
+function selectNone() { document.querySelectorAll('#partnerSelectList input').forEach(cb=>cb.checked=false); updateCount(); }
+function updateCount() { document.getElementById('selectedCount').textContent = document.querySelectorAll('#partnerSelectList input:checked').length; }
+
+async function handleMedia(e) { if(e.target.files[0]) await uploadMedia(e.target.files[0]); e.target.value=''; }
+async function uploadMedia(file) {
+    const fd = new FormData(); fd.append('file', file);
+    const res = await (await fetch('/api/upload',{method:'POST',body:fd})).json();
+    if(res.success) { broadcastMedia={url:res.url,type:res.media_type}; showPreview(file,res.media_type); }
+}
+function showPreview(file,type) {
+    document.getElementById('mediaPreviewBroadcast').innerHTML = `<div class="media-preview" style="margin:12px 0;"><div style="padding:8px;">${type==='image'?'🖼️':type==='video'?'📹':'🎵'} ${type}</div><button onclick="removeMedia()" style="background:none;border:none;color:var(--error);cursor:pointer;">✕</button></div>`;
+}
+function removeMedia() { broadcastMedia=null; document.getElementById('mediaPreviewBroadcast').innerHTML=''; }
+
+async function startRec(type) {
+    recordedChunks=[]; recordingSeconds=0;
+    try {
+        mediaStream = await navigator.mediaDevices.getUserMedia(type==='video'?{audio:true,video:{facingMode:'user'}}:{audio:true});
+        document.getElementById('recordTitle').textContent = type==='video'?'Recording Video...':'Recording Voice...';
+        document.getElementById('recordTimer').textContent = '0:00';
+        const vp = document.getElementById('videoPreview');
+        if(type==='video') { vp.style.display='block'; vp.srcObject=mediaStream; vp.play(); } else vp.style.display='none';
+        mediaRecorder = new MediaRecorder(mediaStream,{mimeType:type==='video'?'video/webm':'audio/webm'});
+        mediaRecorder.ondataavailable = e=>{ if(e.data.size>0) recordedChunks.push(e.data); };
+        mediaRecorder.onstop = async()=>{ await uploadMedia(new File([new Blob(recordedChunks,{type:type==='video'?'video/webm':'audio/webm'})],'recording.webm')); };
+        mediaRecorder.start();
+        recordingTimer = setInterval(()=>{ recordingSeconds++; document.getElementById('recordTimer').textContent=`${Math.floor(recordingSeconds/60)}:${(recordingSeconds%60).toString().padStart(2,'0')}`; },1000);
+        openModal('recordModal');
+    } catch(e) { alert('Cannot access camera/mic'); }
+}
+function stopRec() { if(mediaRecorder?.state!=='inactive') mediaRecorder.stop(); cleanup(); closeModal('recordModal'); }
+function cancelRec() { if(mediaRecorder?.state!=='inactive') mediaRecorder.stop(); recordedChunks=[]; cleanup(); closeModal('recordModal'); }
+function cleanup() { if(recordingTimer) clearInterval(recordingTimer); recordingTimer=null; if(mediaStream) mediaStream.getTracks().forEach(t=>t.stop()); mediaStream=null; document.getElementById('videoPreview').srcObject=null; }
+
+async function sendBroadcast() {
+    const msg = document.getElementById('messageText').value.trim();
+    const ids = Array.from(document.querySelectorAll('#partnerSelectList input:checked')).map(cb=>parseInt(cb.value));
+    if(!ids.length) return alert('Select partners');
+    if(!msg && !broadcastMedia) return alert('Enter message or attach media');
+    const data = {message:msg, partner_ids:ids};
+    if(broadcastMedia) { data.media_url=broadcastMedia.url; data.media_type=broadcastMedia.type; }
+    const res = await (await fetch('/api/broadcast',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})).json();
+    const ok = res.results.filter(r=>r.result.success).length;
+    alert(`Sent: ${ok}/${ids.length}`);
+    if(ok) { document.getElementById('messageText').value=''; removeMedia(); loadPartners(); }
+}
+
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+loadData();
+</script>
+{% endblock %}
