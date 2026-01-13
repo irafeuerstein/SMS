@@ -1,10 +1,14 @@
 import os
+import io
+import csv
 import json
 import smtplib
+import cloudinary
+import cloudinary.uploader
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 from functools import wraps
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_from_directory
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_from_directory, Response
 from flask_sqlalchemy import SQLAlchemy
 from twilio.rest import Client
 from twilio.twiml.messaging_response import MessagingResponse
@@ -15,11 +19,14 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///sms_platform.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
 
-# Ensure upload folder exists
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+# Cloudinary config (for persistent file storage)
+cloudinary.config(
+    cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME'),
+    api_key=os.environ.get('CLOUDINARY_API_KEY'),
+    api_secret=os.environ.get('CLOUDINARY_API_SECRET')
+)
 
 # Twilio config
 TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID')
@@ -59,6 +66,7 @@ class Partner(db.Model):
     region_id = db.Column(db.Integer, db.ForeignKey('region.id'))
     tsd_id = db.Column(db.Integer, db.ForeignKey('tsd.id'))
     notes = db.Column(db.Text)
+    opted_out = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_contacted = db.Column(db.DateTime)
     
@@ -103,11 +111,20 @@ class Message(db.Model):
     twilio_sid = db.Column(db.String(50))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-class MediaFile(db.Model):
+class MessageTemplate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    filename = db.Column(db.String(255), nullable=False)
-    original_name = db.Column(db.String(255))
-    media_type = db.Column(db.String(50))  # image, video, audio
+    name = db.Column(db.String(100), nullable=False)
+    body = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class ScheduledMessage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    message_template = db.Column(db.Text, nullable=False)
+    partner_ids = db.Column(db.Text, nullable=False)  # JSON array
+    media_url = db.Column(db.String(500))
+    media_type = db.Column(db.String(50))
+    scheduled_time = db.Column(db.DateTime, nullable=False)
+    status = db.Column(db.String(20), default='pending')  # pending, sent, cancelled
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 # Auth decorator
@@ -133,8 +150,12 @@ def personalize_message(template, partner):
     message = message.replace('{{company}}', partner.company or '')
     if partner.region:
         message = message.replace('{{region}}', partner.region.name)
+    else:
+        message = message.replace('{{region}}', '')
     if partner.tsd:
         message = message.replace('{{tsd}}', partner.tsd.name)
+    else:
+        message = message.replace('{{tsd}}', '')
     return message
 
 # Send SMS/MMS
@@ -142,6 +163,12 @@ def send_sms(to_phone, body, partner_id=None, media_url=None, media_type=None):
     client = get_twilio_client()
     if not client:
         return {'success': False, 'error': 'Twilio not configured'}
+    
+    # Check opt-out
+    if partner_id:
+        partner = Partner.query.get(partner_id)
+        if partner and partner.opted_out:
+            return {'success': False, 'error': 'Partner has opted out'}
     
     try:
         params = {
@@ -246,11 +273,6 @@ def broadcast():
 def settings():
     return render_template('settings.html')
 
-# Serve uploaded media
-@app.route('/uploads/<filename>')
-def uploaded_file(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
-
 # API: Partners
 @app.route('/api/partners', methods=['GET', 'POST'])
 @login_required
@@ -258,28 +280,49 @@ def api_partners():
     if request.method == 'POST':
         data = request.json
         
+        # Validate phone
+        phone = data.get('phone', '').strip()
+        if not phone.startswith('+'):
+            phone = '+1' + phone.replace('-', '').replace(' ', '').replace('(', '').replace(')', '')
+        
+        # Check duplicate
+        existing = Partner.query.filter_by(phone=phone).first()
+        if existing:
+            return jsonify({'error': 'Phone number already exists'}), 400
+        
         partner = Partner(
             first_name=data['first_name'],
-            last_name=data.get('last_name', ''),
-            company=data.get('company', ''),
-            phone=data['phone'],
-            region_id=data.get('region_id'),
-            tsd_id=data.get('tsd_id'),
-            notes=data.get('notes', '')
+            last_name=data.get('last_name'),
+            company=data.get('company'),
+            phone=phone,
+            region_id=data.get('region_id') or None,
+            tsd_id=data.get('tsd_id') or None,
+            notes=data.get('notes')
         )
         
-        # Add products
-        if 'product_ids' in data:
+        if data.get('product_ids'):
             products = Product.query.filter(Product.id.in_(data['product_ids'])).all()
             partner.products = products
         
         db.session.add(partner)
         db.session.commit()
-        
         return jsonify({'success': True, 'id': partner.id})
     
-    # GET with filtering
+    # GET with filtering and search
     query = Partner.query
+    
+    # Search
+    search = request.args.get('search', '').strip()
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            db.or_(
+                Partner.first_name.ilike(search_term),
+                Partner.last_name.ilike(search_term),
+                Partner.company.ilike(search_term),
+                Partner.phone.ilike(search_term)
+            )
+        )
     
     # Filter by region
     region_ids = request.args.getlist('region_id')
@@ -315,6 +358,7 @@ def api_partners():
         'tsd': p.tsd.name if p.tsd else None,
         'products': [{'id': prod.id, 'name': prod.name} for prod in p.products],
         'notes': p.notes,
+        'opted_out': p.opted_out,
         'is_new': p.is_new,
         'last_contacted': p.last_contacted.isoformat() if p.last_contacted else None,
         'created_at': p.created_at.isoformat()
@@ -338,8 +382,8 @@ def api_partner(id):
         partner.last_name = data.get('last_name', partner.last_name)
         partner.company = data.get('company', partner.company)
         partner.phone = data.get('phone', partner.phone)
-        partner.region_id = data.get('region_id', partner.region_id)
-        partner.tsd_id = data.get('tsd_id', partner.tsd_id)
+        partner.region_id = data.get('region_id') or None
+        partner.tsd_id = data.get('tsd_id') or None
         partner.notes = data.get('notes', partner.notes)
         
         if 'product_ids' in data:
@@ -362,9 +406,107 @@ def api_partner(id):
         'tsd': partner.tsd.name if partner.tsd else None,
         'products': [{'id': prod.id, 'name': prod.name} for prod in partner.products],
         'notes': partner.notes,
+        'opted_out': partner.opted_out,
         'is_new': partner.is_new,
         'last_contacted': partner.last_contacted.isoformat() if partner.last_contacted else None
     })
+
+# API: Import CSV
+@app.route('/api/partners/import', methods=['POST'])
+@login_required
+def api_import_partners():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    
+    file = request.files['file']
+    if not file.filename.endswith('.csv'):
+        return jsonify({'error': 'Must be a CSV file'}), 400
+    
+    try:
+        content = file.read().decode('utf-8')
+        reader = csv.DictReader(io.StringIO(content))
+        
+        imported = 0
+        skipped = 0
+        errors = []
+        
+        for row in reader:
+            try:
+                # Get phone and clean it
+                phone = row.get('phone', row.get('Phone', '')).strip()
+                if not phone:
+                    skipped += 1
+                    continue
+                
+                if not phone.startswith('+'):
+                    phone = '+1' + phone.replace('-', '').replace(' ', '').replace('(', '').replace(')', '')
+                
+                # Check if exists
+                if Partner.query.filter_by(phone=phone).first():
+                    skipped += 1
+                    continue
+                
+                # Get other fields (flexible column names)
+                first_name = row.get('first_name', row.get('First Name', row.get('FirstName', ''))).strip()
+                last_name = row.get('last_name', row.get('Last Name', row.get('LastName', ''))).strip()
+                company = row.get('company', row.get('Company', '')).strip()
+                
+                if not first_name:
+                    skipped += 1
+                    continue
+                
+                partner = Partner(
+                    first_name=first_name,
+                    last_name=last_name or None,
+                    company=company or None,
+                    phone=phone
+                )
+                db.session.add(partner)
+                imported += 1
+                
+            except Exception as e:
+                errors.append(str(e))
+                skipped += 1
+        
+        db.session.commit()
+        return jsonify({
+            'success': True,
+            'imported': imported,
+            'skipped': skipped,
+            'errors': errors[:5]  # Return first 5 errors
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+# API: Export CSV
+@app.route('/api/partners/export')
+@login_required
+def api_export_partners():
+    partners = Partner.query.order_by(Partner.company).all()
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['first_name', 'last_name', 'company', 'phone', 'region', 'tsd', 'products', 'notes', 'last_contacted'])
+    
+    for p in partners:
+        writer.writerow([
+            p.first_name,
+            p.last_name or '',
+            p.company or '',
+            p.phone,
+            p.region.name if p.region else '',
+            p.tsd.name if p.tsd else '',
+            ', '.join([prod.name for prod in p.products]),
+            p.notes or '',
+            p.last_contacted.isoformat() if p.last_contacted else ''
+        ])
+    
+    output.seek(0)
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=partners.csv'}
+    )
 
 # API: Regions
 @app.route('/api/regions', methods=['GET', 'POST'])
@@ -457,6 +599,45 @@ def api_product(id):
         return jsonify({'success': True})
     return jsonify({'success': True})
 
+# API: Message Templates
+@app.route('/api/templates', methods=['GET', 'POST'])
+@login_required
+def api_templates():
+    if request.method == 'POST':
+        data = request.json
+        template = MessageTemplate(
+            name=data['name'],
+            body=data['body']
+        )
+        db.session.add(template)
+        db.session.commit()
+        return jsonify({'success': True, 'id': template.id})
+    
+    templates = MessageTemplate.query.order_by(MessageTemplate.name).all()
+    return jsonify([{
+        'id': t.id,
+        'name': t.name,
+        'body': t.body,
+        'created_at': t.created_at.isoformat()
+    } for t in templates])
+
+@app.route('/api/templates/<int:id>', methods=['PUT', 'DELETE'])
+@login_required
+def api_template(id):
+    template = MessageTemplate.query.get_or_404(id)
+    
+    if request.method == 'DELETE':
+        db.session.delete(template)
+        db.session.commit()
+        return jsonify({'success': True})
+    
+    if request.method == 'PUT':
+        data = request.json
+        template.name = data.get('name', template.name)
+        template.body = data.get('body', template.body)
+        db.session.commit()
+        return jsonify({'success': True})
+
 # API: Messages/Conversations
 @app.route('/api/conversations')
 @login_required
@@ -515,10 +696,6 @@ def api_send():
     media_url = data.get('media_url')
     media_type = data.get('media_type')
     
-    # If media_url is relative, make it absolute
-    if media_url and not media_url.startswith('http'):
-        media_url = f"{APP_BASE_URL}{media_url}"
-    
     result = send_sms(partner.phone, message, partner.id, media_url, media_type)
     return jsonify(result)
 
@@ -533,20 +710,51 @@ def api_broadcast():
     media_url = data.get('media_url')
     media_type = data.get('media_type')
     
-    if media_url and not media_url.startswith('http'):
-        media_url = f"{APP_BASE_URL}{media_url}"
-    
     results = []
     for pid in partner_ids:
         partner = Partner.query.get(pid)
-        if partner:
+        if partner and not partner.opted_out:
             message = personalize_message(message_template, partner)
             result = send_sms(partner.phone, message, partner.id, media_url, media_type)
             results.append({'partner': partner.full_name, 'result': result})
     
     return jsonify({'sent': len(results), 'results': results})
 
-# API: Upload media
+# API: Scheduled Messages
+@app.route('/api/scheduled', methods=['GET', 'POST'])
+@login_required
+def api_scheduled():
+    if request.method == 'POST':
+        data = request.json
+        scheduled = ScheduledMessage(
+            message_template=data['message'],
+            partner_ids=json.dumps(data['partner_ids']),
+            media_url=data.get('media_url'),
+            media_type=data.get('media_type'),
+            scheduled_time=datetime.fromisoformat(data['scheduled_time'].replace('Z', '+00:00'))
+        )
+        db.session.add(scheduled)
+        db.session.commit()
+        return jsonify({'success': True, 'id': scheduled.id})
+    
+    scheduled = ScheduledMessage.query.filter_by(status='pending').order_by(ScheduledMessage.scheduled_time).all()
+    return jsonify([{
+        'id': s.id,
+        'message': s.message_template,
+        'partner_count': len(json.loads(s.partner_ids)),
+        'scheduled_time': s.scheduled_time.isoformat(),
+        'status': s.status
+    } for s in scheduled])
+
+@app.route('/api/scheduled/<int:id>', methods=['DELETE'])
+@login_required
+def api_scheduled_delete(id):
+    scheduled = ScheduledMessage.query.get_or_404(id)
+    scheduled.status = 'cancelled'
+    db.session.commit()
+    return jsonify({'success': True})
+
+# API: Upload media (now uses Cloudinary)
 @app.route('/api/upload', methods=['POST'])
 @login_required
 def api_upload():
@@ -563,33 +771,35 @@ def api_upload():
     
     if ext in ['jpg', 'jpeg', 'png', 'gif']:
         media_type = 'image'
+        resource_type = 'image'
     elif ext in ['mp4', 'mov', 'avi', 'webm']:
         media_type = 'video'
+        resource_type = 'video'
     elif ext in ['mp3', 'wav', 'ogg', 'm4a', 'webm']:
         media_type = 'audio'
+        resource_type = 'video'  # Cloudinary uses 'video' for audio too
     else:
         return jsonify({'success': False, 'error': 'Unsupported file type'}), 400
     
-    # Save with unique name
-    unique_filename = f"{secrets.token_hex(8)}_{filename}"
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
-    file.save(filepath)
+    # Check if Cloudinary is configured
+    if not os.environ.get('CLOUDINARY_CLOUD_NAME'):
+        return jsonify({'success': False, 'error': 'Cloud storage not configured. Add Cloudinary credentials.'}), 400
     
-    # Save to database
-    media = MediaFile(
-        filename=unique_filename,
-        original_name=filename,
-        media_type=media_type
-    )
-    db.session.add(media)
-    db.session.commit()
-    
-    return jsonify({
-        'success': True,
-        'id': media.id,
-        'url': f"/uploads/{unique_filename}",
-        'media_type': media_type
-    })
+    try:
+        # Upload to Cloudinary
+        result = cloudinary.uploader.upload(
+            file,
+            resource_type=resource_type,
+            folder='silversky-sms'
+        )
+        
+        return jsonify({
+            'success': True,
+            'url': result['secure_url'],
+            'media_type': media_type
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # Twilio webhook for incoming messages
 @app.route('/webhook/incoming', methods=['POST'])
@@ -612,6 +822,13 @@ def webhook_incoming():
             media_type = 'audio'
     
     partner = Partner.query.filter_by(phone=from_number).first()
+    
+    # Check for opt-out keywords
+    opt_out_keywords = ['stop', 'unsubscribe', 'cancel', 'quit', 'end']
+    if body.strip().lower() in opt_out_keywords:
+        if partner:
+            partner.opted_out = True
+            db.session.commit()
     
     if partner:
         msg = Message(
@@ -650,6 +867,26 @@ def webhook_incoming():
     resp = MessagingResponse()
     return str(resp)
 
+# Background job to send scheduled messages
+def send_scheduled_messages():
+    with app.app_context():
+        now = datetime.utcnow()
+        pending = ScheduledMessage.query.filter(
+            ScheduledMessage.status == 'pending',
+            ScheduledMessage.scheduled_time <= now
+        ).all()
+        
+        for scheduled in pending:
+            partner_ids = json.loads(scheduled.partner_ids)
+            for pid in partner_ids:
+                partner = Partner.query.get(pid)
+                if partner and not partner.opted_out:
+                    message = personalize_message(scheduled.message_template, partner)
+                    send_sms(partner.phone, message, partner.id, scheduled.media_url, scheduled.media_type)
+            
+            scheduled.status = 'sent'
+            db.session.commit()
+
 # Initialize database with default products
 def init_db():
     with app.app_context():
@@ -662,7 +899,21 @@ def init_db():
                 db.session.add(Product(name=name))
             db.session.commit()
 
+# Initialize scheduler for scheduled messages
+def init_scheduler():
+    from apscheduler.schedulers.background import BackgroundScheduler
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(send_scheduled_messages, 'interval', minutes=1)
+    scheduler.start()
+
 init_db()
+
+# Only start scheduler if not in debug/reload mode
+if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+    try:
+        init_scheduler()
+    except:
+        pass  # Scheduler may already be running
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
