@@ -378,13 +378,21 @@ def api_regions():
     regions = Region.query.order_by(Region.name).all()
     return jsonify([{'id': r.id, 'name': r.name} for r in regions])
 
-@app.route('/api/regions/<int:id>', methods=['DELETE'])
+@app.route('/api/regions/<int:id>', methods=['PUT', 'DELETE'])
 @login_required
 def api_region(id):
     region = Region.query.get_or_404(id)
-    db.session.delete(region)
-    db.session.commit()
-    return jsonify({'success': True})
+    
+    if request.method == 'DELETE':
+        db.session.delete(region)
+        db.session.commit()
+        return jsonify({'success': True})
+    
+    if request.method == 'PUT':
+        data = request.json
+        region.name = data.get('name', region.name)
+        db.session.commit()
+        return jsonify({'success': True})
 
 # API: TSDs
 @app.route('/api/tsds', methods=['GET', 'POST'])
@@ -400,13 +408,21 @@ def api_tsds():
     tsds = TSD.query.order_by(TSD.name).all()
     return jsonify([{'id': t.id, 'name': t.name} for t in tsds])
 
-@app.route('/api/tsds/<int:id>', methods=['DELETE'])
+@app.route('/api/tsds/<int:id>', methods=['PUT', 'DELETE'])
 @login_required
 def api_tsd(id):
     tsd = TSD.query.get_or_404(id)
-    db.session.delete(tsd)
-    db.session.commit()
-    return jsonify({'success': True})
+    
+    if request.method == 'DELETE':
+        db.session.delete(tsd)
+        db.session.commit()
+        return jsonify({'success': True})
+    
+    if request.method == 'PUT':
+        data = request.json
+        tsd.name = data.get('name', tsd.name)
+        db.session.commit()
+        return jsonify({'success': True})
 
 # API: Products
 @app.route('/api/products', methods=['GET', 'POST'])
@@ -422,12 +438,21 @@ def api_products():
     products = Product.query.order_by(Product.name).all()
     return jsonify([{'id': p.id, 'name': p.name} for p in products])
 
-@app.route('/api/products/<int:id>', methods=['DELETE'])
+@app.route('/api/products/<int:id>', methods=['PUT', 'DELETE'])
 @login_required
 def api_product(id):
     product = Product.query.get_or_404(id)
-    db.session.delete(product)
-    db.session.commit()
+    
+    if request.method == 'DELETE':
+        db.session.delete(product)
+        db.session.commit()
+        return jsonify({'success': True})
+    
+    if request.method == 'PUT':
+        data = request.json
+        product.name = data.get('name', product.name)
+        db.session.commit()
+        return jsonify({'success': True})
     return jsonify({'success': True})
 
 # API: Messages/Conversations
