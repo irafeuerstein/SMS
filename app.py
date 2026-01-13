@@ -765,13 +765,20 @@ def api_upload():
     if file.filename == '':
         return jsonify({'success': False, 'error': 'No file selected'}), 400
     
+    # Check for explicit media_type from form (for recordings)
+    explicit_type = request.form.get('media_type')
+    
     # Determine media type from MIME type first, then extension
     content_type = file.content_type or ''
     filename = secure_filename(file.filename)
     ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
     
+    # Use explicit type if provided (from recordings)
+    if explicit_type in ['audio', 'video', 'image']:
+        media_type = explicit_type
+        resource_type = 'image' if explicit_type == 'image' else 'video'
     # Check MIME type first (more reliable for recordings)
-    if content_type.startswith('audio/'):
+    elif content_type.startswith('audio/'):
         media_type = 'audio'
         resource_type = 'video'  # Cloudinary uses 'video' for audio too
     elif content_type.startswith('video/'):
@@ -790,7 +797,7 @@ def api_upload():
         media_type = 'audio'
         resource_type = 'video'
     elif ext == 'webm':
-        # Default webm to video, but MIME type check above should catch audio/webm
+        # Default webm to video, but explicit type or MIME type check above should catch audio
         media_type = 'video'
         resource_type = 'video'
     else:

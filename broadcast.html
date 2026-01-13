@@ -1,0 +1,484 @@
+{% extends 'base.html' %}
+{% block title %}Broadcast - SilverSky Partners{% endblock %}
+
+{% block content %}
+<header class="header">
+    <h1>Broadcast</h1>
+    <button class="header-btn" onclick="openModal('scheduledModal')">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="24" height="24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+    </button>
+</header>
+
+<main class="content">
+    <div class="card">
+        <h3 style="font-size: 0.9rem; margin-bottom: 12px;">1. Select Partners</h3>
+        
+        <div class="form-group">
+            <label class="form-label">Region</label>
+            <select class="form-select" id="regionFilter" onchange="loadPartners()">
+                <option value="">All Regions</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label">TSD</label>
+            <select class="form-select" id="tsdFilter" onchange="loadPartners()">
+                <option value="">All TSDs</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label">Product</label>
+            <select class="form-select" id="productFilter" onchange="loadPartners()">
+                <option value="">All Products</option>
+            </select>
+        </div>
+        
+        <label class="checkbox-item" style="margin-bottom: 12px;">
+            <input type="checkbox" id="newOnlyFilter" onchange="loadPartners()">
+            <span>New partners only</span>
+        </label>
+        
+        <div id="partnerCount" style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 8px;"></div>
+        
+        <div id="partnerSelectList" style="max-height: 200px; overflow-y: auto; background: var(--bg-dark); border-radius: 10px; padding: 8px;"></div>
+        
+        <div class="flex gap-2 mt-3">
+            <button class="btn btn-sm btn-ghost" onclick="selectAll()">Select All</button>
+            <button class="btn btn-sm btn-ghost" onclick="selectNone()">Clear</button>
+        </div>
+    </div>
+    
+    <div class="card">
+        <h3 style="font-size: 0.9rem; margin-bottom: 12px;">2. Compose Message</h3>
+        
+        <!-- Template Selector -->
+        <div class="form-group">
+            <label class="form-label">Use Template</label>
+            <div style="display: flex; gap: 8px;">
+                <select class="form-select" id="templateSelect" onchange="applyTemplate()" style="flex: 1;">
+                    <option value="">Select a template...</option>
+                </select>
+                <button class="btn btn-sm btn-secondary" onclick="openModal('saveTemplateModal')">Save</button>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <textarea class="form-textarea" id="messageText" rows="4" placeholder="Hey {{first_name}}, wanted to reach out about..." oninput="updateCharCount()"></textarea>
+            <div style="display: flex; justify-content: space-between; margin-top: 6px;">
+                <div style="font-size: 0.7rem; color: var(--text-muted);">
+                    Tokens: {{first_name}}, {{name}}, {{company}}, {{region}}, {{tsd}}
+                </div>
+                <div id="charCount" style="font-size: 0.75rem; color: var(--text-muted);">0/160 (1 segment)</div>
+            </div>
+        </div>
+        
+        <div id="mediaPreviewBroadcast"></div>
+        
+        <div class="flex gap-2">
+            <button class="btn btn-sm btn-secondary" onclick="document.getElementById('broadcastMediaInput').click()">📎 File</button>
+            <button class="btn btn-sm btn-secondary" onclick="startRec('audio')">🎤 Voice</button>
+            <button class="btn btn-sm btn-secondary" onclick="startRec('video')">📹 Video</button>
+        </div>
+        <input type="file" id="broadcastMediaInput" accept="image/*,video/*,audio/*" style="display: none;" onchange="handleMedia(event)">
+    </div>
+    
+    <div class="card">
+        <h3 style="font-size: 0.9rem; margin-bottom: 12px;">3. Send Options</h3>
+        
+        <div class="form-group">
+            <label class="checkbox-item">
+                <input type="checkbox" id="scheduleCheckbox" onchange="toggleSchedule()">
+                <span>Schedule for later</span>
+            </label>
+        </div>
+        
+        <div id="scheduleOptions" style="display: none;">
+            <div class="form-group">
+                <label class="form-label">Date & Time</label>
+                <input type="datetime-local" class="form-input" id="scheduledTime">
+            </div>
+        </div>
+    </div>
+    
+    <button class="btn btn-block" id="sendBtn" onclick="sendBroadcast()">
+        <span id="sendBtnText">Send to <span id="selectedCount">0</span> Partners</span>
+        <span id="sendBtnLoading" style="display: none;">Sending...</span>
+    </button>
+</main>
+
+<!-- Record Modal -->
+<div class="modal-overlay" id="recordModal">
+    <div class="modal" style="text-align: center;">
+        <div class="modal-handle"></div>
+        <h2 class="modal-title" id="recordTitle">Recording...</h2>
+        <div style="font-size: 3rem; margin: 20px 0;">🔴</div>
+        <div id="recordTimer" style="font-size: 1.5rem; color: var(--accent); margin-bottom: 20px;">0:00</div>
+        <video id="videoPreview" style="width: 100%; max-height: 200px; display: none; border-radius: 10px; margin-bottom: 16px;" muted playsinline></video>
+        <div class="flex gap-2">
+            <button class="btn btn-secondary" onclick="cancelRec()" style="flex: 1;">Cancel</button>
+            <button class="btn" onclick="stopRec()" style="flex: 1;">Attach</button>
+        </div>
+    </div>
+</div>
+
+<!-- Save Template Modal -->
+<div class="modal-overlay" id="saveTemplateModal">
+    <div class="modal">
+        <div class="modal-handle"></div>
+        <h2 class="modal-title">Save as Template</h2>
+        <div class="form-group">
+            <label class="form-label">Template Name</label>
+            <input type="text" class="form-input" id="templateName" placeholder="e.g., Welcome Message">
+        </div>
+        <div class="flex gap-2 mt-4">
+            <button class="btn btn-secondary" onclick="closeModal('saveTemplateModal')" style="flex: 1;">Cancel</button>
+            <button class="btn" onclick="saveTemplate()" style="flex: 1;">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- Scheduled Messages Modal -->
+<div class="modal-overlay" id="scheduledModal">
+    <div class="modal">
+        <div class="modal-handle"></div>
+        <h2 class="modal-title">Scheduled Messages</h2>
+        <div id="scheduledList" style="max-height: 300px; overflow-y: auto;"></div>
+        <button class="btn btn-secondary btn-block mt-4" onclick="closeModal('scheduledModal')">Close</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let partners = [], templates = [], broadcastMedia = null;
+let mediaRecorder = null, recordedChunks = [], recordingTimer = null, recordingSeconds = 0, mediaStream = null;
+
+async function loadData() {
+    const [r1, r2, r3, r4] = await Promise.all([
+        fetch('/api/regions'), 
+        fetch('/api/tsds'), 
+        fetch('/api/products'),
+        fetch('/api/templates')
+    ]);
+    const [regions, tsds, products] = await Promise.all([r1.json(), r2.json(), r3.json()]);
+    templates = await r4.json();
+    
+    document.getElementById('regionFilter').innerHTML = '<option value="">All</option>' + regions.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+    document.getElementById('tsdFilter').innerHTML = '<option value="">All</option>' + tsds.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+    document.getElementById('productFilter').innerHTML = '<option value="">All</option>' + products.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    
+    renderTemplates();
+    loadPartners();
+    
+    // Set default scheduled time to tomorrow 9am
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(9, 0, 0, 0);
+    document.getElementById('scheduledTime').value = tomorrow.toISOString().slice(0, 16);
+}
+
+function renderTemplates() {
+    document.getElementById('templateSelect').innerHTML = '<option value="">Select a template...</option>' + 
+        templates.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+}
+
+function applyTemplate() {
+    const id = document.getElementById('templateSelect').value;
+    if (!id) return;
+    const template = templates.find(t => t.id == id);
+    if (template) {
+        document.getElementById('messageText').value = template.body;
+        updateCharCount();
+    }
+}
+
+async function saveTemplate() {
+    const name = document.getElementById('templateName').value.trim();
+    const body = document.getElementById('messageText').value.trim();
+    
+    if (!name || !body) {
+        alert('Please enter a name and message');
+        return;
+    }
+    
+    const res = await fetch('/api/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, body })
+    });
+    
+    if (res.ok) {
+        templates = await (await fetch('/api/templates')).json();
+        renderTemplates();
+        document.getElementById('templateName').value = '';
+        closeModal('saveTemplateModal');
+    }
+}
+
+function updateCharCount() {
+    const text = document.getElementById('messageText').value;
+    const len = text.length;
+    const segments = Math.ceil(len / 160) || 1;
+    const remaining = (segments * 160) - len;
+    
+    const countEl = document.getElementById('charCount');
+    countEl.textContent = `${len}/160 (${segments} segment${segments > 1 ? 's' : ''})`;
+    
+    if (len > 160) {
+        countEl.style.color = 'var(--warning)';
+    } else if (len > 140) {
+        countEl.style.color = 'var(--accent)';
+    } else {
+        countEl.style.color = 'var(--text-muted)';
+    }
+}
+
+function toggleSchedule() {
+    const checked = document.getElementById('scheduleCheckbox').checked;
+    document.getElementById('scheduleOptions').style.display = checked ? 'block' : 'none';
+    document.getElementById('sendBtnText').innerHTML = checked ? 
+        'Schedule for <span id="selectedCount">' + getSelectedCount() + '</span> Partners' :
+        'Send to <span id="selectedCount">' + getSelectedCount() + '</span> Partners';
+}
+
+function getSelectedCount() {
+    return document.querySelectorAll('#partnerSelectList input:checked').length;
+}
+
+async function loadPartners() {
+    let url = '/api/partners?';
+    const r = document.getElementById('regionFilter').value;
+    const t = document.getElementById('tsdFilter').value;
+    const p = document.getElementById('productFilter').value;
+    const n = document.getElementById('newOnlyFilter').checked;
+    
+    if (r) url += `region_id=${r}&`;
+    if (t) url += `tsd_id=${t}&`;
+    if (p) url += `product_id=${p}&`;
+    if (n) url += 'new_only=true&';
+    
+    partners = await (await fetch(url)).json();
+    // Filter out opted-out partners
+    partners = partners.filter(p => !p.opted_out);
+    renderList();
+}
+
+function renderList() {
+    const c = document.getElementById('partnerSelectList');
+    document.getElementById('partnerCount').textContent = `${partners.length} partners`;
+    
+    if (!partners.length) {
+        c.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted)">No matches</div>';
+        updateCount();
+        return;
+    }
+    
+    c.innerHTML = partners.map(p => `
+        <label class="checkbox-item" style="width:100%;margin-bottom:6px;">
+            <input type="checkbox" value="${p.id}" checked onchange="updateCount()">
+            <span>${escapeHtml(p.full_name)} <span style="color:var(--text-muted)">${escapeHtml(p.company || '')}</span></span>
+        </label>
+    `).join('');
+    updateCount();
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function selectAll() { document.querySelectorAll('#partnerSelectList input').forEach(cb => cb.checked = true); updateCount(); }
+function selectNone() { document.querySelectorAll('#partnerSelectList input').forEach(cb => cb.checked = false); updateCount(); }
+
+function updateCount() {
+    const count = getSelectedCount();
+    document.querySelectorAll('#selectedCount').forEach(el => el.textContent = count);
+}
+
+async function handleMedia(e) {
+    if (e.target.files[0]) await uploadMedia(e.target.files[0]);
+    e.target.value = '';
+}
+
+async function uploadMedia(file) {
+    const fd = new FormData();
+    fd.append('file', file);
+    
+    document.getElementById('mediaPreviewBroadcast').innerHTML = '<div style="padding: 12px; text-align: center;">Uploading...</div>';
+    
+    const res = await (await fetch('/api/upload', { method: 'POST', body: fd })).json();
+    if (res.success) {
+        broadcastMedia = { url: res.url, type: res.media_type };
+        showPreview(res.media_type);
+    } else {
+        alert(res.error || 'Upload failed');
+        document.getElementById('mediaPreviewBroadcast').innerHTML = '';
+    }
+}
+
+function showPreview(type) {
+    document.getElementById('mediaPreviewBroadcast').innerHTML = `
+        <div class="media-preview" style="margin:12px 0; display: flex; align-items: center; gap: 8px; background: var(--bg-dark); padding: 8px 12px; border-radius: 8px;">
+            <span>${type === 'image' ? '🖼️' : type === 'video' ? '📹' : '🎵'} ${type} attached</span>
+            <button onclick="removeMedia()" style="background:none;border:none;color:var(--error);cursor:pointer;margin-left:auto;">✕</button>
+        </div>
+    `;
+}
+
+function removeMedia() {
+    broadcastMedia = null;
+    document.getElementById('mediaPreviewBroadcast').innerHTML = '';
+}
+
+let currentRecordingType = null;
+
+async function startRec(type) {
+    currentRecordingType = type;
+    recordedChunks = [];
+    recordingSeconds = 0;
+    try {
+        mediaStream = await navigator.mediaDevices.getUserMedia(type === 'video' ? { audio: true, video: { facingMode: 'user' } } : { audio: true });
+        document.getElementById('recordTitle').textContent = type === 'video' ? 'Recording Video...' : 'Recording Voice...';
+        document.getElementById('recordTimer').textContent = '0:00';
+        const vp = document.getElementById('videoPreview');
+        if (type === 'video') { vp.style.display = 'block'; vp.srcObject = mediaStream; vp.play(); } else vp.style.display = 'none';
+        mediaRecorder = new MediaRecorder(mediaStream, { mimeType: type === 'video' ? 'video/webm' : 'audio/webm' });
+        mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+        mediaRecorder.onstop = async () => {
+            const recType = currentRecordingType;
+            const mimeType = recType === 'video' ? 'video/webm' : 'audio/webm';
+            const blob = new Blob(recordedChunks, { type: mimeType });
+            const file = new File([blob], recType === 'video' ? 'recording.webm' : 'recording.webm', { type: mimeType });
+            await uploadMediaWithType(file, recType);
+        };
+        mediaRecorder.start();
+        recordingTimer = setInterval(() => { recordingSeconds++; document.getElementById('recordTimer').textContent = `${Math.floor(recordingSeconds / 60)}:${(recordingSeconds % 60).toString().padStart(2, '0')}`; }, 1000);
+        openModal('recordModal');
+    } catch (e) { alert('Cannot access camera/mic'); }
+}
+
+async function uploadMediaWithType(file, type) {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('media_type', type);  // Pass the type explicitly
+    
+    document.getElementById('mediaPreviewBroadcast').innerHTML = '<div style="padding: 12px; text-align: center;">Uploading...</div>';
+    
+    const res = await (await fetch('/api/upload', { method: 'POST', body: fd })).json();
+    if (res.success) {
+        broadcastMedia = { url: res.url, type: res.media_type };
+        showPreview(res.media_type);
+    } else {
+        alert(res.error || 'Upload failed');
+        document.getElementById('mediaPreviewBroadcast').innerHTML = '';
+    }
+}
+
+function stopRec() { if (mediaRecorder?.state !== 'inactive') mediaRecorder.stop(); cleanup(); closeModal('recordModal'); }
+function cancelRec() { if (mediaRecorder?.state !== 'inactive') mediaRecorder.stop(); recordedChunks = []; cleanup(); closeModal('recordModal'); }
+function cleanup() { if (recordingTimer) clearInterval(recordingTimer); recordingTimer = null; if (mediaStream) mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; document.getElementById('videoPreview').srcObject = null; currentRecordingType = null; }
+
+async function sendBroadcast() {
+    const msg = document.getElementById('messageText').value.trim();
+    const ids = Array.from(document.querySelectorAll('#partnerSelectList input:checked')).map(cb => parseInt(cb.value));
+    const isScheduled = document.getElementById('scheduleCheckbox').checked;
+    
+    if (!ids.length) return alert('Select partners');
+    if (!msg && !broadcastMedia) return alert('Enter message or attach media');
+    
+    // Show loading
+    document.getElementById('sendBtn').disabled = true;
+    document.getElementById('sendBtnText').style.display = 'none';
+    document.getElementById('sendBtnLoading').style.display = 'inline';
+    
+    try {
+        const data = { message: msg, partner_ids: ids };
+        if (broadcastMedia) {
+            data.media_url = broadcastMedia.url;
+            data.media_type = broadcastMedia.type;
+        }
+        
+        if (isScheduled) {
+            const scheduledTime = document.getElementById('scheduledTime').value;
+            if (!scheduledTime) {
+                alert('Please select a date and time');
+                return;
+            }
+            data.scheduled_time = new Date(scheduledTime).toISOString();
+            
+            const res = await fetch('/api/scheduled', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            
+            if (res.ok) {
+                alert(`Scheduled for ${ids.length} partners`);
+                document.getElementById('messageText').value = '';
+                removeMedia();
+                document.getElementById('scheduleCheckbox').checked = false;
+                toggleSchedule();
+                loadPartners();
+            }
+        } else {
+            const res = await fetch('/api/broadcast', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            const result = await res.json();
+            const ok = result.results.filter(r => r.result.success).length;
+            alert(`Sent: ${ok}/${ids.length}`);
+            if (ok) {
+                document.getElementById('messageText').value = '';
+                removeMedia();
+                loadPartners();
+            }
+        }
+    } finally {
+        document.getElementById('sendBtn').disabled = false;
+        document.getElementById('sendBtnText').style.display = 'inline';
+        document.getElementById('sendBtnLoading').style.display = 'none';
+    }
+}
+
+async function loadScheduled() {
+    const scheduled = await (await fetch('/api/scheduled')).json();
+    const list = document.getElementById('scheduledList');
+    
+    if (scheduled.length === 0) {
+        list.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-muted);">No scheduled messages</div>';
+        return;
+    }
+    
+    list.innerHTML = scheduled.map(s => `
+        <div class="card" style="margin-bottom: 8px;">
+            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 4px;">
+                ${new Date(s.scheduled_time).toLocaleString()} • ${s.partner_count} partners
+            </div>
+            <div style="font-size: 0.9rem;">${escapeHtml(s.message.substring(0, 100))}${s.message.length > 100 ? '...' : ''}</div>
+            <button class="btn btn-sm btn-ghost" style="margin-top: 8px; color: var(--error);" onclick="cancelScheduled(${s.id})">Cancel</button>
+        </div>
+    `).join('');
+}
+
+async function cancelScheduled(id) {
+    if (!confirm('Cancel this scheduled message?')) return;
+    await fetch(`/api/scheduled/${id}`, { method: 'DELETE' });
+    loadScheduled();
+}
+
+function openModal(id) {
+    document.getElementById(id).classList.add('active');
+    if (id === 'scheduledModal') loadScheduled();
+}
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+loadData();
+</script>
+{% endblock %}
