@@ -326,6 +326,8 @@ def api_partner(id):
     partner = Partner.query.get_or_404(id)
     
     if request.method == 'DELETE':
+        # Delete associated messages first
+        Message.query.filter_by(partner_id=id).delete()
         db.session.delete(partner)
         db.session.commit()
         return jsonify({'success': True})
