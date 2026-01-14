@@ -271,6 +271,74 @@
     .sentiment-positive { background: rgba(0, 212, 170, 0.2); color: var(--accent); }
     .sentiment-neutral { background: rgba(255, 187, 0, 0.2); color: var(--warning); }
     .sentiment-negative { background: rgba(255, 85, 102, 0.2); color: var(--error); }
+    
+    /* AI SDR Draft Box */
+    .ai-draft-box {
+        background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+        border: 1px solid rgba(102, 126, 234, 0.3);
+        border-radius: var(--radius-md);
+        padding: 12px;
+        margin-bottom: 12px;
+    }
+    .ai-draft-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 8px;
+        font-size: 0.75rem;
+        color: #667eea;
+        font-weight: 600;
+    }
+    .ai-draft-content {
+        background: var(--bg-card);
+        border-radius: var(--radius-sm);
+        padding: 10px 12px;
+        font-size: 0.9rem;
+        color: var(--text-primary);
+        margin-bottom: 10px;
+        line-height: 1.4;
+    }
+    .ai-draft-actions {
+        display: flex;
+        gap: 8px;
+    }
+    .ai-draft-btn {
+        flex: 1;
+        padding: 8px 12px;
+        border-radius: var(--radius-sm);
+        font-size: 0.8rem;
+        font-weight: 500;
+        cursor: pointer;
+        border: none;
+        transition: all 0.15s ease;
+    }
+    .ai-draft-btn.approve {
+        background: var(--accent);
+        color: var(--bg-primary);
+    }
+    .ai-draft-btn.approve:hover {
+        opacity: 0.9;
+    }
+    .ai-draft-btn.edit {
+        background: var(--bg-hover);
+        color: var(--text-primary);
+        border: 1px solid var(--border);
+    }
+    .ai-draft-btn.regenerate {
+        background: transparent;
+        color: #667eea;
+        border: 1px solid rgba(102, 126, 234, 0.3);
+    }
+    .ai-draft-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    .ai-draft-loading {
+        text-align: center;
+        padding: 16px;
+        color: var(--text-muted);
+        font-size: 0.85rem;
+    }
 </style>
 {% endblock %}
 
@@ -320,6 +388,19 @@
 
 <div class="compose-bar hidden" id="composeBar">
     <div class="compose-bar-inner">
+        <!-- AI SDR Draft Box -->
+        <div class="ai-draft-box hidden" id="aiDraftBox">
+            <div class="ai-draft-header">
+                <span>🤖</span> AI Draft
+            </div>
+            <div class="ai-draft-content" id="aiDraftContent"></div>
+            <div class="ai-draft-actions">
+                <button class="ai-draft-btn approve" onclick="approveAiDraft()">✓ Send</button>
+                <button class="ai-draft-btn edit" onclick="editAiDraft()">✎ Edit</button>
+                <button class="ai-draft-btn regenerate" onclick="regenerateAiDraft()" id="regenBtn">↻ New</button>
+            </div>
+        </div>
+        
         <!-- AI Panel (Expandable) -->
         <div class="ai-panel hidden" id="aiPanel">
             <div class="ai-panel-header">
@@ -763,8 +844,138 @@ async function loadMessages() {
         const res = await fetch(`/api/messages/${currentPartnerId}`);
         const messages = await res.json();
         renderMessages(messages);
+        
+        // Check for AI draft on latest inbound message
+        checkForAiDraft(messages);
     } catch (err) {
         console.error(err);
+    }
+}
+
+// AI SDR: Check if there's a pending draft to show
+function checkForAiDraft(messages) {
+    const draftBox = document.getElementById('aiDraftBox');
+    if (!draftBox) return;
+    
+    // Find the latest inbound message
+    const inboundMessages = messages.filter(m => m.direction === 'inbound');
+    if (inboundMessages.length === 0) {
+        draftBox.classList.add('hidden');
+        return;
+    }
+    
+    const latestInbound = inboundMessages[inboundMessages.length - 1];
+    
+    // Find the latest outbound
+    const outboundMessages = messages.filter(m => m.direction === 'outbound');
+    const latestOutbound = outboundMessages.length > 0 ? outboundMessages[outboundMessages.length - 1] : null;
+    
+    // Only show draft if latest message is inbound (unanswered)
+    if (latestOutbound && new Date(latestOutbound.created_at) > new Date(latestInbound.created_at)) {
+        draftBox.classList.add('hidden');
+        return;
+    }
+    
+    // Check if this message has a draft
+    if (latestInbound.ai_draft && latestInbound.ai_draft_status === 'pending') {
+        showAiDraft(latestInbound.ai_draft, latestInbound.id);
+    } else if (latestInbound.ai_draft_status !== 'approved' && latestInbound.ai_draft_status !== 'edited') {
+        // Maybe draft is still being generated - poll for it
+        pollForDraft(latestInbound.id);
+    } else {
+        draftBox.classList.add('hidden');
+    }
+}
+
+let draftPollCount = 0;
+function pollForDraft(messageId) {
+    if (draftPollCount > 10) return; // Give up after 10 attempts
+    
+    draftPollCount++;
+    setTimeout(async () => {
+        try {
+            const res = await fetch(`/api/ai/draft/${messageId}`);
+            const data = await res.json();
+            
+            if (data.draft && data.status === 'pending') {
+                showAiDraft(data.draft, messageId);
+                draftPollCount = 0;
+            } else if (!data.draft) {
+                pollForDraft(messageId);
+            }
+        } catch (err) {
+            console.error('Draft poll error:', err);
+        }
+    }, 2000);
+}
+
+let currentDraftMessageId = null;
+function showAiDraft(draft, messageId) {
+    const draftBox = document.getElementById('aiDraftBox');
+    const draftContent = document.getElementById('aiDraftContent');
+    
+    currentDraftMessageId = messageId;
+    draftContent.textContent = draft;
+    draftBox.classList.remove('hidden');
+}
+
+function approveAiDraft() {
+    const draft = document.getElementById('aiDraftContent').textContent;
+    document.getElementById('messageInput').value = draft;
+    updateCharCountInbox();
+    
+    // Update draft status
+    if (currentDraftMessageId) {
+        fetch(`/api/ai/draft-status/${currentDraftMessageId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'approved' })
+        });
+    }
+    
+    // Hide draft box and send
+    document.getElementById('aiDraftBox').classList.add('hidden');
+    sendMessage();
+}
+
+function editAiDraft() {
+    const draft = document.getElementById('aiDraftContent').textContent;
+    document.getElementById('messageInput').value = draft;
+    document.getElementById('messageInput').focus();
+    updateCharCountInbox();
+    
+    // Update draft status
+    if (currentDraftMessageId) {
+        fetch(`/api/ai/draft-status/${currentDraftMessageId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'edited' })
+        });
+    }
+    
+    document.getElementById('aiDraftBox').classList.add('hidden');
+}
+
+async function regenerateAiDraft() {
+    const regenBtn = document.getElementById('regenBtn');
+    regenBtn.disabled = true;
+    regenBtn.textContent = '...';
+    
+    try {
+        const res = await fetch(`/api/ai/regenerate-draft/${currentPartnerId}`, { method: 'POST' });
+        const data = await res.json();
+        
+        if (data.draft) {
+            document.getElementById('aiDraftContent').textContent = data.draft;
+            showToast('New draft generated');
+        } else {
+            showToast(data.error || 'Failed to generate', 'error');
+        }
+    } catch (err) {
+        showToast('Failed to regenerate', 'error');
+    } finally {
+        regenBtn.disabled = false;
+        regenBtn.textContent = '↻ New';
     }
 }
 

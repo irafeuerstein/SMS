@@ -90,6 +90,7 @@ class User(db.Model):
     personal_style = db.Column(db.Text)  # Their writing tone
     calendar_link = db.Column(db.String(500))
     onboarding_step = db.Column(db.Integer, default=0)
+    ai_sdr_enabled = db.Column(db.Boolean, default=True)  # Auto-draft replies
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login = db.Column(db.DateTime)
@@ -181,6 +182,8 @@ class Message(db.Model):
     media_type = db.Column(db.String(50))
     status = db.Column(db.String(20))
     twilio_sid = db.Column(db.String(50))
+    ai_draft = db.Column(db.Text)  # AI-generated draft reply
+    ai_draft_status = db.Column(db.String(20))  # 'pending', 'approved', 'edited', 'rejected'
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class MessageTemplate(db.Model):
@@ -1987,6 +1990,8 @@ def api_messages(partner_id):
         'media_url': m.media_url,
         'media_type': m.media_type,
         'status': m.status,
+        'ai_draft': m.ai_draft,
+        'ai_draft_status': m.ai_draft_status,
         'created_at': m.created_at.isoformat()
     } for m in messages])
 
@@ -2128,6 +2133,88 @@ def api_upload():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+# AI SDR: Generate draft reply for inbound message
+def generate_ai_draft(partner_id, message_id):
+    """Generate AI draft reply in background"""
+    try:
+        client = get_ai_client()
+        if not client:
+            return
+        
+        partner = Partner.query.get(partner_id)
+        if not partner:
+            return
+        
+        # Check if user has AI SDR enabled
+        user = User.query.get(partner.user_id)
+        if not user or not user.ai_sdr_enabled:
+            return
+        
+        # Get conversation history
+        messages = Message.query.filter_by(partner_id=partner_id).order_by(Message.created_at.desc()).limit(10).all()
+        messages.reverse()
+        
+        conversation = []
+        for m in messages:
+            role = 'Partner' if m.direction == 'inbound' else 'You'
+            conversation.append(f"{role}: {m.body}")
+        
+        conversation_text = '\n'.join(conversation)
+        
+        # Get business knowledge
+        knowledge = get_ai_knowledge_context(tenant_id=partner.tenant_id)
+        
+        # Get user's personal style
+        style_instruction = ""
+        if user.personal_style:
+            style_instruction = f"\n\nIMPORTANT - Match this writing style: {user.personal_style}"
+        
+        # Get calendar link if available
+        calendar_note = ""
+        if user.calendar_link:
+            calendar_note = f"\n\nIf scheduling a meeting, suggest this calendar link: {user.calendar_link}"
+        
+        prompt = f"""You are an AI SDR (Sales Development Rep) assistant for a Strategic Partner Manager at SilverSky, a cybersecurity company.
+
+Your job is to draft SMS replies that the manager can review and send. Be helpful, professional, and concise.
+{knowledge}
+{style_instruction}
+{calendar_note}
+
+Partner info:
+- Name: {partner.full_name}
+- Company: {partner.company or 'Unknown'}
+- Region: {partner.region.name if partner.region else 'Unknown'}
+- Products interested in: {', '.join([p.name for p in partner.products]) or 'Unknown'}
+- Notes: {partner.notes or 'None'}
+
+Recent conversation:
+{conversation_text}
+
+Write a single SMS reply (under 300 characters) that responds to the partner's last message. Be helpful and move the conversation forward. Do NOT include any preamble or explanation - just the SMS text itself."""
+
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=200,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        draft = response.content[0].text.strip()
+        
+        # Remove quotes if AI wrapped it
+        if draft.startswith('"') and draft.endswith('"'):
+            draft = draft[1:-1]
+        
+        # Save draft to the inbound message
+        msg = Message.query.get(message_id)
+        if msg:
+            msg.ai_draft = draft
+            msg.ai_draft_status = 'pending'
+            db.session.commit()
+            
+    except Exception as e:
+        print(f"AI Draft error: {e}")
+
 # Twilio webhook for incoming messages
 @app.route('/webhook/incoming', methods=['POST'])
 def webhook_incoming():
@@ -2148,6 +2235,7 @@ def webhook_incoming():
         elif 'audio' in content_type:
             media_type = 'audio'
     
+    # Find partner by phone across all tenants (webhook doesn't have session)
     partner = Partner.query.filter_by(phone=from_number).first()
     
     # Check for opt-out keywords
@@ -2157,9 +2245,11 @@ def webhook_incoming():
             partner.opted_out = True
             db.session.commit()
     
+    msg = None
     if partner:
         msg = Message(
             partner_id=partner.id,
+            user_id=partner.user_id,
             direction='inbound',
             body=body,
             media_url=media_url,
@@ -2169,27 +2259,50 @@ def webhook_incoming():
         db.session.add(msg)
         db.session.commit()
         send_notification(partner.full_name, body)
-    else:
-        # Unknown sender - create partner
-        partner = Partner(
-            first_name=from_number,
-            phone=from_number,
-            notes='Auto-created from incoming message'
-        )
-        db.session.add(partner)
-        db.session.commit()
         
-        msg = Message(
-            partner_id=partner.id,
-            direction='inbound',
-            body=body,
-            media_url=media_url,
-            media_type=media_type,
-            status='received'
-        )
-        db.session.add(msg)
-        db.session.commit()
-        send_notification(from_number, body)
+        # Generate AI draft reply (non-blocking)
+        try:
+            import threading
+            thread = threading.Thread(target=generate_ai_draft, args=(partner.id, msg.id))
+            thread.start()
+        except:
+            pass
+    else:
+        # Unknown sender - create partner with default tenant/user
+        tenant = Tenant.query.first()
+        admin = User.query.filter_by(role='admin').first()
+        
+        if tenant and admin:
+            partner = Partner(
+                tenant_id=tenant.id,
+                user_id=admin.id,
+                first_name=from_number,
+                phone=from_number,
+                notes='Auto-created from incoming message'
+            )
+            db.session.add(partner)
+            db.session.commit()
+            
+            msg = Message(
+                partner_id=partner.id,
+                user_id=admin.id,
+                direction='inbound',
+                body=body,
+                media_url=media_url,
+                media_type=media_type,
+                status='received'
+            )
+            db.session.add(msg)
+            db.session.commit()
+            send_notification(from_number, body)
+            
+            # Generate AI draft for new contact too
+            try:
+                import threading
+                thread = threading.Thread(target=generate_ai_draft, args=(partner.id, msg.id))
+                thread.start()
+            except:
+                pass
     
     resp = MessagingResponse()
     return str(resp)
@@ -2253,11 +2366,14 @@ def init_db():
                         ("product", "tenant_id", "ALTER TABLE product ADD COLUMN tenant_id INTEGER"),
                         ("tag", "tenant_id", "ALTER TABLE tag ADD COLUMN tenant_id INTEGER"),
                         ("message", "user_id", "ALTER TABLE message ADD COLUMN user_id INTEGER"),
+                        ("message", "ai_draft", "ALTER TABLE message ADD COLUMN ai_draft TEXT"),
+                        ("message", "ai_draft_status", "ALTER TABLE message ADD COLUMN ai_draft_status VARCHAR(20)"),
                         ("message_template", "tenant_id", "ALTER TABLE message_template ADD COLUMN tenant_id INTEGER"),
                         ("scheduled_message", "tenant_id", "ALTER TABLE scheduled_message ADD COLUMN tenant_id INTEGER"),
                         ("scheduled_message", "user_id", "ALTER TABLE scheduled_message ADD COLUMN user_id INTEGER"),
                         ("ai_knowledge", "tenant_id", "ALTER TABLE ai_knowledge ADD COLUMN tenant_id INTEGER"),
                         ("ai_settings", "tenant_id", "ALTER TABLE ai_settings ADD COLUMN tenant_id INTEGER"),
+                        ("user", "ai_sdr_enabled", "ALTER TABLE \"user\" ADD COLUMN ai_sdr_enabled BOOLEAN DEFAULT TRUE"),
                     ]
                     
                     for table, column, sql in migrations:
@@ -2322,6 +2438,31 @@ def init_db():
                     conn.execute(text(f"UPDATE message_template SET tenant_id = {tenant.id} WHERE tenant_id IS NULL"))
                     conn.execute(text(f"UPDATE scheduled_message SET tenant_id = {tenant.id} WHERE tenant_id IS NULL"))
                     conn.commit()
+                    
+                    # V15 Migration: Migrate UserSettings to User table
+                    # Check if user_settings table exists
+                    result = conn.execute(text("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'user_settings')"))
+                    user_settings_exists = result.scalar()
+                    
+                    if user_settings_exists:
+                        # Get old settings
+                        result = conn.execute(text("SELECT onboarding_step, calendar_link FROM user_settings LIMIT 1"))
+                        old_settings = result.fetchone()
+                        
+                        if old_settings and admin:
+                            old_step = old_settings[0] or 0
+                            old_calendar = old_settings[1] or ''
+                            
+                            # Only migrate if admin hasn't completed onboarding in new system
+                            if admin.onboarding_step == 0 and old_step > 0:
+                                admin.onboarding_step = old_step
+                            
+                            if not admin.calendar_link and old_calendar:
+                                admin.calendar_link = old_calendar
+                            
+                            db.session.commit()
+                            print(f"Migrated UserSettings: step={old_step}, calendar={old_calendar}")
+                    
             except Exception as e:
                 print(f"Data migration error: {e}")
 
@@ -2339,13 +2480,16 @@ def api_user_settings():
             user.calendar_link = data['calendar_link']
         if 'personal_style' in data:
             user.personal_style = data['personal_style']
+        if 'ai_sdr_enabled' in data:
+            user.ai_sdr_enabled = data['ai_sdr_enabled']
         db.session.commit()
         return jsonify({'success': True})
     
     return jsonify({
         'onboarding_step': user.onboarding_step,
         'calendar_link': user.calendar_link or '',
-        'personal_style': user.personal_style or ''
+        'personal_style': user.personal_style or '',
+        'ai_sdr_enabled': user.ai_sdr_enabled if user.ai_sdr_enabled is not None else True
     })
 
 @app.route('/api/user/change-password', methods=['POST'])
@@ -2432,6 +2576,133 @@ def api_skip_onboarding():
     user = get_current_user()
     user.onboarding_step = 6
     db.session.commit()
+    return jsonify({'success': True})
+
+# AI SDR APIs
+@app.route('/api/ai/draft/<int:message_id>')
+@login_required
+def api_get_draft(message_id):
+    """Get AI draft for a message"""
+    user = get_current_user()
+    msg = Message.query.get_or_404(message_id)
+    
+    # Verify ownership
+    partner = Partner.query.get(msg.partner_id)
+    if not partner or (not user.is_admin and partner.user_id != user.id):
+        return jsonify({'error': 'Access denied'}), 403
+    
+    return jsonify({
+        'draft': msg.ai_draft or '',
+        'status': msg.ai_draft_status or ''
+    })
+
+@app.route('/api/ai/regenerate-draft/<int:partner_id>', methods=['POST'])
+@login_required
+def api_regenerate_draft(partner_id):
+    """Regenerate AI draft for latest inbound message"""
+    user = get_current_user()
+    partner = Partner.query.get_or_404(partner_id)
+    
+    # Verify ownership
+    if not user.is_admin and partner.user_id != user.id:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    # Get latest inbound message
+    last_inbound = Message.query.filter_by(
+        partner_id=partner_id, 
+        direction='inbound'
+    ).order_by(Message.created_at.desc()).first()
+    
+    if not last_inbound:
+        return jsonify({'error': 'No inbound message found'}), 404
+    
+    # Generate new draft synchronously (so we can return it)
+    client = get_ai_client()
+    if not client:
+        return jsonify({'error': 'AI not configured'}), 400
+    
+    # Get conversation history
+    messages = Message.query.filter_by(partner_id=partner_id).order_by(Message.created_at.desc()).limit(10).all()
+    messages.reverse()
+    
+    conversation = []
+    for m in messages:
+        role = 'Partner' if m.direction == 'inbound' else 'You'
+        conversation.append(f"{role}: {m.body}")
+    
+    conversation_text = '\n'.join(conversation)
+    
+    # Get business knowledge
+    knowledge = get_ai_knowledge_context(tenant_id=partner.tenant_id)
+    
+    # Get user's personal style
+    style_instruction = ""
+    if user.personal_style:
+        style_instruction = f"\n\nIMPORTANT - Match this writing style: {user.personal_style}"
+    
+    # Get calendar link if available
+    calendar_note = ""
+    if user.calendar_link:
+        calendar_note = f"\n\nIf scheduling a meeting, suggest this calendar link: {user.calendar_link}"
+    
+    prompt = f"""You are an AI SDR (Sales Development Rep) assistant for a Strategic Partner Manager at SilverSky, a cybersecurity company.
+
+Your job is to draft SMS replies that the manager can review and send. Be helpful, professional, and concise.
+{knowledge}
+{style_instruction}
+{calendar_note}
+
+Partner info:
+- Name: {partner.full_name}
+- Company: {partner.company or 'Unknown'}
+- Region: {partner.region.name if partner.region else 'Unknown'}
+- Products interested in: {', '.join([p.name for p in partner.products]) or 'Unknown'}
+- Notes: {partner.notes or 'None'}
+
+Recent conversation:
+{conversation_text}
+
+Write a single SMS reply (under 300 characters) that responds to the partner's last message. Be helpful and move the conversation forward. Make this response DIFFERENT from any previous suggestions. Do NOT include any preamble or explanation - just the SMS text itself."""
+
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=200,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        draft = response.content[0].text.strip()
+        
+        # Remove quotes if AI wrapped it
+        if draft.startswith('"') and draft.endswith('"'):
+            draft = draft[1:-1]
+        
+        # Save draft
+        last_inbound.ai_draft = draft
+        last_inbound.ai_draft_status = 'pending'
+        db.session.commit()
+        
+        return jsonify({'success': True, 'draft': draft})
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/ai/draft-status/<int:message_id>', methods=['PUT'])
+@login_required
+def api_update_draft_status(message_id):
+    """Update draft status (approved, edited, rejected)"""
+    user = get_current_user()
+    msg = Message.query.get_or_404(message_id)
+    
+    # Verify ownership
+    partner = Partner.query.get(msg.partner_id)
+    if not partner or (not user.is_admin and partner.user_id != user.id):
+        return jsonify({'error': 'Access denied'}), 403
+    
+    data = request.json
+    msg.ai_draft_status = data.get('status', 'rejected')
+    db.session.commit()
+    
     return jsonify({'success': True})
 
 @app.route('/api/stats/unread-count')

@@ -215,6 +215,19 @@
             </svg>
         </div>
         <div class="settings-group-content">
+            <!-- AI SDR Mode Toggle -->
+            <div class="ai-step" style="border: 2px solid rgba(102, 126, 234, 0.4); background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);">
+                <div class="ai-step-header">
+                    <div class="step-indicator active" style="background: var(--ai-gradient);">🤖</div>
+                    <div class="ai-step-title">AI SDR Mode</div>
+                </div>
+                <div class="ai-step-desc" style="margin-bottom: 12px;">AI automatically drafts replies when you receive messages. Review and send with one click.</div>
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                    <input type="checkbox" id="aiSdrToggle" onchange="toggleAiSdr()" style="width: 20px; height: 20px; accent-color: #667eea;">
+                    <span style="font-size: 0.9rem;">Enable AI Auto-Draft</span>
+                </label>
+            </div>
+            
             <!-- Step 1: Import Website -->
             <div class="ai-step" style="border: 1px solid rgba(102, 126, 234, 0.3);">
                 <div class="ai-step-header">
@@ -371,7 +384,7 @@
             <!-- Version -->
             <div style="text-align: center; padding-top: 12px; border-top: 1px solid var(--border);">
                 <div style="font-size: 0.75rem; color: var(--text-muted);">SilverSky SMS</div>
-                <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">Version 1.4.0</div>
+                <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">Version 1.5.0</div>
             </div>
         </div>
     </div>
@@ -733,13 +746,18 @@ async function deleteKnowledge(id) {
     showToast('Deleted'); loadKnowledge();
 }
 
-// Calendar Link
-async function loadCalendarLink() {
+// Calendar Link and User Settings
+async function loadUserSettings() {
     try {
         const res = await fetch('/api/user/settings');
         const data = await res.json();
         if (data.calendar_link) {
             document.getElementById('calendarLink').value = data.calendar_link;
+        }
+        // AI SDR toggle
+        const toggle = document.getElementById('aiSdrToggle');
+        if (toggle) {
+            toggle.checked = data.ai_sdr_enabled !== false; // Default to true
         }
     } catch (err) { console.error(err); }
 }
@@ -755,6 +773,20 @@ async function saveCalendarLink() {
         showToast('Calendar link saved!');
     } catch (err) {
         showToast('Failed to save', 'error');
+    }
+}
+
+async function toggleAiSdr() {
+    const enabled = document.getElementById('aiSdrToggle').checked;
+    try {
+        await fetch('/api/user/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ai_sdr_enabled: enabled })
+        });
+        showToast(enabled ? 'AI SDR enabled!' : 'AI SDR disabled');
+    } catch (err) {
+        showToast('Failed to update', 'error');
     }
 }
 
@@ -800,6 +832,6 @@ document.getElementById('newTag').addEventListener('keydown', e => { if (e.key =
 
 loadData();
 loadKnowledge();
-loadCalendarLink();
+loadUserSettings();
 </script>
 {% endblock %}
