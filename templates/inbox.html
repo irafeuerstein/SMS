@@ -15,12 +15,6 @@
         padding-bottom: calc(12px + env(safe-area-inset-bottom));
         z-index: 100;
     }
-    @media (min-width: 769px) {
-        .compose-bar {
-            bottom: 0;
-            padding-bottom: 12px;
-        }
-    }
     .compose-bar-inner {
         max-width: 600px;
         margin: 0 auto;
@@ -702,6 +696,7 @@ function escapeHtml(str) {
 }
 
 async function openConversation(partnerId) {
+    console.log('Opening conversation:', partnerId);
     currentPartnerId = partnerId;
     currentPartner = conversations.find(c => c.partner_id === partnerId);
     
@@ -711,9 +706,19 @@ async function openConversation(partnerId) {
         currentPartner = await res.json();
     }
     
+    console.log('Partner data:', currentPartner);
+    console.log('Partner opted_out:', currentPartner.opted_out);
+    
     document.getElementById('conversationsView').classList.add('hidden');
     document.getElementById('chatView').classList.remove('hidden');
-    document.getElementById('composeBar').classList.remove('hidden');
+    
+    const composeBar = document.getElementById('composeBar');
+    console.log('ComposeBar element:', composeBar);
+    if (composeBar) {
+        composeBar.classList.remove('hidden');
+        console.log('ComposeBar classes after remove hidden:', composeBar.className);
+    }
+    
     document.getElementById('backBtn').classList.remove('hidden');
     document.getElementById('filterBtn').classList.add('hidden');
     document.getElementById('searchBtn').classList.add('hidden');
@@ -722,6 +727,9 @@ async function openConversation(partnerId) {
     // Handle opted out - show message instead of compose bar content
     const optedOutMsg = document.getElementById('optedOutMessage');
     const composeInner = document.getElementById('composeBarInner');
+    
+    console.log('optedOutMsg element:', optedOutMsg);
+    console.log('composeInner element:', composeInner);
     
     if (currentPartner.opted_out) {
         if (optedOutMsg) optedOutMsg.classList.remove('hidden');
