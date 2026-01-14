@@ -6,6 +6,9 @@ import smtplib
 import cloudinary
 import cloudinary.uploader
 import anthropic
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin, urlparse
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 from functools import wraps
@@ -145,6 +148,20 @@ class ScheduledMessage(db.Model):
     scheduled_time = db.Column(db.DateTime, nullable=False)
     status = db.Column(db.String(20), default='pending')  # pending, sent, cancelled
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class AIKnowledge(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    category = db.Column(db.String(50), nullable=False)  # products, objections, faq, tone, general
+    title = db.Column(db.String(200), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class AISettings(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    setting_key = db.Column(db.String(50), nullable=False, unique=True)
+    setting_value = db.Column(db.Text)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 # Auth decorator
 def login_required(f):
@@ -696,6 +713,42 @@ def get_ai_client():
         return anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     return None
 
+# AI: Get all knowledge for context
+def get_ai_knowledge_context():
+    knowledge_items = AIKnowledge.query.all()
+    if not knowledge_items:
+        return ""
+    
+    context = "\n\n=== BUSINESS KNOWLEDGE BASE ===\n"
+    
+    # Group by category
+    categories = {}
+    for item in knowledge_items:
+        if item.category not in categories:
+            categories[item.category] = []
+        categories[item.category].append(item)
+    
+    category_labels = {
+        'products': 'PRODUCTS & SERVICES',
+        'objections': 'COMMON OBJECTIONS & RESPONSES',
+        'faq': 'FREQUENTLY ASKED QUESTIONS',
+        'tone': 'COMMUNICATION STYLE & TONE',
+        'general': 'GENERAL BUSINESS INFO'
+    }
+    
+    for cat, items in categories.items():
+        label = category_labels.get(cat, cat.upper())
+        context += f"\n--- {label} ---\n"
+        for item in items:
+            context += f"\n**{item.title}**\n{item.content}\n"
+    
+    return context
+
+# AI: Get settings
+def get_ai_setting(key, default=''):
+    setting = AISettings.query.filter_by(setting_key=key).first()
+    return setting.setting_value if setting else default
+
 # AI: Generate reply suggestions based on conversation
 @app.route('/api/ai/suggestions/<int:partner_id>', methods=['POST'])
 @login_required
@@ -719,7 +772,11 @@ def api_ai_suggestions(partner_id):
     
     conversation_text = '\n'.join(conversation)
     
+    # Get business knowledge
+    knowledge = get_ai_knowledge_context()
+    
     prompt = f"""You are helping a Strategic Partner Manager at SilverSky (a cybersecurity company) respond to SMS messages from channel partners.
+{knowledge}
 
 Partner info:
 - Name: {partner.full_name}
@@ -731,7 +788,7 @@ Partner info:
 Recent conversation:
 {conversation_text}
 
-Generate exactly 3 short, professional SMS reply suggestions (under 160 characters each) that the partner manager could send next. Make them contextually relevant to the conversation. Be helpful, friendly, and action-oriented.
+Generate exactly 3 short, professional SMS reply suggestions (under 160 characters each) that the partner manager could send next. Make them contextually relevant to the conversation. Use the business knowledge above to give accurate, informed responses. Be helpful, friendly, and action-oriented.
 
 Return ONLY a JSON array of 3 strings, no other text. Example: ["Reply 1", "Reply 2", "Reply 3"]"""
 
@@ -783,15 +840,16 @@ Partner info:
 - Notes: {partner.notes or 'None'}
 """
     
+    # Get business knowledge
+    knowledge = get_ai_knowledge_context()
+    
     prompt = f"""You are helping a Strategic Partner Manager at SilverSky (a cybersecurity company) write SMS messages to channel partners.
-
-SilverSky offers: MxDR (Managed Extended Detection and Response), Email Protection, and Compliance services.
-
+{knowledge}
 {partner_context}
 
 User request: {prompt_text}
 
-Write a professional, friendly SMS message (under 160 characters if possible, max 320 characters). Use {{{{first_name}}}} if you want to personalize with the partner's name.
+Write a professional, friendly SMS message (under 160 characters if possible, max 320 characters). Use the business knowledge above to be accurate and specific. Use {{{{first_name}}}} if you want to personalize with the partner's name.
 
 Return ONLY the message text, no quotes or explanation."""
 
@@ -894,6 +952,349 @@ Example: {{"sentiment": "positive", "score": 75, "label": "Interested"}}"""
         return jsonify(result)
     except:
         return jsonify({'sentiment': 'neutral', 'score': 50, 'label': 'Unknown'})
+
+# API: AI Knowledge Base
+@app.route('/api/ai/knowledge', methods=['GET', 'POST'])
+@login_required
+def api_ai_knowledge():
+    if request.method == 'POST':
+        data = request.json
+        knowledge = AIKnowledge(
+            category=data['category'],
+            title=data['title'],
+            content=data['content']
+        )
+        db.session.add(knowledge)
+        db.session.commit()
+        return jsonify({'success': True, 'id': knowledge.id})
+    
+    items = AIKnowledge.query.order_by(AIKnowledge.category, AIKnowledge.title).all()
+    return jsonify([{
+        'id': k.id,
+        'category': k.category,
+        'title': k.title,
+        'content': k.content,
+        'created_at': k.created_at.isoformat(),
+        'updated_at': k.updated_at.isoformat()
+    } for k in items])
+
+@app.route('/api/ai/knowledge/<int:id>', methods=['GET', 'PUT', 'DELETE'])
+@login_required
+def api_ai_knowledge_item(id):
+    item = AIKnowledge.query.get_or_404(id)
+    
+    if request.method == 'DELETE':
+        db.session.delete(item)
+        db.session.commit()
+        return jsonify({'success': True})
+    
+    if request.method == 'PUT':
+        data = request.json
+        item.category = data.get('category', item.category)
+        item.title = data.get('title', item.title)
+        item.content = data.get('content', item.content)
+        db.session.commit()
+        return jsonify({'success': True})
+    
+    return jsonify({
+        'id': item.id,
+        'category': item.category,
+        'title': item.title,
+        'content': item.content
+    })
+
+# API: AI Settings
+@app.route('/api/ai/settings', methods=['GET', 'POST'])
+@login_required
+def api_ai_settings():
+    if request.method == 'POST':
+        data = request.json
+        for key, value in data.items():
+            setting = AISettings.query.filter_by(setting_key=key).first()
+            if setting:
+                setting.setting_value = value
+            else:
+                setting = AISettings(setting_key=key, setting_value=value)
+                db.session.add(setting)
+        db.session.commit()
+        return jsonify({'success': True})
+    
+    settings = AISettings.query.all()
+    return jsonify({s.setting_key: s.setting_value for s in settings})
+
+# API: Analyze user's writing style from sent messages
+@app.route('/api/ai/analyze-style', methods=['POST'])
+@login_required
+def api_ai_analyze_style():
+    client = get_ai_client()
+    if not client:
+        return jsonify({'error': 'AI not configured'}), 400
+    
+    # Get user's sent messages
+    messages = Message.query.filter_by(direction='outbound').order_by(Message.created_at.desc()).limit(50).all()
+    
+    if len(messages) < 5:
+        return jsonify({'error': 'Need at least 5 sent messages to analyze your style. Send more messages first!'}), 400
+    
+    # Extract message bodies
+    message_texts = [m.body for m in messages if m.body and len(m.body) > 10]
+    
+    if len(message_texts) < 5:
+        return jsonify({'error': 'Not enough text messages to analyze. Send more messages first!'}), 400
+    
+    sample = '\n---\n'.join(message_texts[:30])
+    
+    prompt = f"""Analyze these SMS messages written by a sales professional and create a detailed writing style guide that captures exactly how they communicate.
+
+Messages:
+{sample}
+
+Create a comprehensive style guide that includes:
+1. Overall tone (formal/casual/friendly/direct)
+2. Typical message length preferences
+3. Common phrases and expressions they use
+4. Punctuation style (exclamation points, emojis, ellipses, etc.)
+5. How they start messages (greetings used)
+6. How they end messages (sign-offs, CTAs)
+7. Vocabulary patterns (technical terms, casual words, etc.)
+8. Personality traits that come through
+9. What they avoid doing
+
+Write this as instructions for an AI to mimic this person's exact writing style. Be specific and include actual examples from their messages.
+
+Format as a clear, actionable style guide in 200-300 words."""
+
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=1000,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        style_guide = response.content[0].text.strip()
+        
+        # Save or update the writing style
+        existing = AIKnowledge.query.filter_by(category='tone', title='My Writing Style').first()
+        if existing:
+            existing.content = style_guide
+        else:
+            knowledge = AIKnowledge(
+                category='tone',
+                title='My Writing Style',
+                content=style_guide
+            )
+            db.session.add(knowledge)
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'style_guide': style_guide,
+            'messages_analyzed': len(message_texts)
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# API: Learn from example messages
+@app.route('/api/ai/learn-examples', methods=['POST'])
+@login_required
+def api_ai_learn_examples():
+    client = get_ai_client()
+    if not client:
+        return jsonify({'error': 'AI not configured'}), 400
+    
+    data = request.json
+    examples = data.get('examples', '').strip()
+    
+    if not examples or len(examples) < 50:
+        return jsonify({'error': 'Please provide more example messages'}), 400
+    
+    prompt = f"""Analyze these example SMS messages and create a detailed writing style guide that captures exactly how this person communicates.
+
+Example messages:
+{examples}
+
+Create a comprehensive style guide that includes:
+1. Overall tone (formal/casual/friendly/direct)
+2. Typical message length preferences
+3. Common phrases and expressions they use
+4. Punctuation style (exclamation points, emojis, etc.)
+5. How they start and end messages
+6. Vocabulary patterns
+7. Personality traits that come through
+
+Write this as instructions for an AI to mimic this exact writing style. Be specific and include actual examples.
+
+Format as a clear, actionable style guide in 150-250 words."""
+
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=800,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        style_guide = response.content[0].text.strip()
+        
+        # Save or update
+        existing = AIKnowledge.query.filter_by(category='tone', title='My Writing Style').first()
+        if existing:
+            existing.content = style_guide
+        else:
+            knowledge = AIKnowledge(
+                category='tone',
+                title='My Writing Style',
+                content=style_guide
+            )
+            db.session.add(knowledge)
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'style_guide': style_guide
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# API: Scrape website for AI training
+@app.route('/api/ai/scrape', methods=['POST'])
+@login_required
+def api_ai_scrape():
+    client = get_ai_client()
+    if not client:
+        return jsonify({'error': 'AI not configured'}), 400
+    
+    data = request.json
+    url = data.get('url', '').strip()
+    
+    if not url:
+        return jsonify({'error': 'Please provide a URL'}), 400
+    
+    if not url.startswith('http'):
+        url = 'https://' + url
+    
+    try:
+        # Scrape the main page
+        headers = {'User-Agent': 'Mozilla/5.0 (compatible; SilverSkyBot/1.0)'}
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Remove script and style elements
+        for script in soup(["script", "style", "nav", "footer", "header"]):
+            script.decompose()
+        
+        # Get text content
+        text = soup.get_text(separator='\n', strip=True)
+        
+        # Clean up text - remove extra whitespace
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        text = '\n'.join(lines)
+        
+        # Truncate if too long
+        if len(text) > 15000:
+            text = text[:15000] + "..."
+        
+        # Find internal links to scrape more pages
+        base_domain = urlparse(url).netloc
+        internal_links = set()
+        for a in soup.find_all('a', href=True):
+            href = a['href']
+            full_url = urljoin(url, href)
+            if urlparse(full_url).netloc == base_domain and full_url != url:
+                internal_links.add(full_url)
+        
+        # Scrape up to 5 additional pages
+        additional_content = []
+        for link in list(internal_links)[:5]:
+            try:
+                resp = requests.get(link, headers=headers, timeout=10)
+                if resp.status_code == 200:
+                    page_soup = BeautifulSoup(resp.text, 'html.parser')
+                    for script in page_soup(["script", "style", "nav", "footer", "header"]):
+                        script.decompose()
+                    page_text = page_soup.get_text(separator='\n', strip=True)
+                    page_lines = [line.strip() for line in page_text.splitlines() if line.strip()]
+                    page_text = '\n'.join(page_lines)
+                    if len(page_text) > 5000:
+                        page_text = page_text[:5000]
+                    additional_content.append(f"\n\n--- Page: {link} ---\n{page_text}")
+            except:
+                continue
+        
+        all_content = text + ''.join(additional_content)
+        
+        # Use AI to extract and categorize knowledge
+        prompt = f"""Analyze this website content and extract useful information for training an AI sales assistant for SilverSky (a cybersecurity company selling to channel partners/MSPs).
+
+Website content:
+{all_content}
+
+Extract and categorize the most important information into these categories:
+1. products - Product/service descriptions, features, benefits
+2. general - Company info, about us, differentiators, value props
+3. faq - Any FAQ content or common questions answered
+
+Return a JSON array of knowledge items. Each item should have:
+- "category": one of "products", "general", or "faq"  
+- "title": short descriptive title (under 100 chars)
+- "content": the extracted content (keep it concise but informative, under 500 chars)
+
+Return 5-15 items that would be most useful for a sales person. Focus on:
+- Product features and benefits
+- Pricing info if available
+- Company differentiators
+- Key selling points
+
+Return ONLY valid JSON array, no other text."""
+
+        ai_response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=4000,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        # Parse AI response
+        response_text = ai_response.content[0].text.strip()
+        # Clean up response if needed
+        if response_text.startswith('```'):
+            response_text = response_text.split('```')[1]
+            if response_text.startswith('json'):
+                response_text = response_text[4:]
+        
+        knowledge_items = json.loads(response_text)
+        
+        # Save to database
+        added = 0
+        for item in knowledge_items:
+            if item.get('title') and item.get('content'):
+                knowledge = AIKnowledge(
+                    category=item.get('category', 'general'),
+                    title=item['title'][:200],
+                    content=item['content']
+                )
+                db.session.add(knowledge)
+                added += 1
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'added': added,
+            'pages_scraped': 1 + len(additional_content),
+            'items': knowledge_items
+        })
+        
+    except requests.RequestException as e:
+        return jsonify({'error': f'Failed to fetch URL: {str(e)}'}), 400
+    except json.JSONDecodeError as e:
+        return jsonify({'error': 'Failed to parse AI response'}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 # API: Message Templates
 @app.route('/api/templates', methods=['GET', 'POST'])
