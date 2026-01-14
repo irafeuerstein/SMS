@@ -73,6 +73,8 @@ class Partner(db.Model):
     tsd_id = db.Column(db.Integer, db.ForeignKey('tsd.id'))
     notes = db.Column(db.Text)
     opted_out = db.Column(db.Boolean, default=False)
+    pinned = db.Column(db.Boolean, default=False)
+    archived = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_contacted = db.Column(db.DateTime)
     
@@ -727,28 +729,111 @@ def api_template(id):
 @app.route('/api/conversations')
 @login_required
 def api_conversations():
-    partners = Partner.query.all()
+    show_archived = request.args.get('archived') == 'true'
+    filter_unread = request.args.get('unread') == 'true'
+    filter_has_media = request.args.get('has_media') == 'true'
+    
+    partners = Partner.query.filter_by(archived=show_archived).all()
     conversations = []
     
     for partner in partners:
         latest = Message.query.filter_by(partner_id=partner.id).order_by(Message.created_at.desc()).first()
         unread = Message.query.filter_by(partner_id=partner.id, direction='inbound', status='received').count()
+        total_messages = Message.query.filter_by(partner_id=partner.id).count()
+        has_any_media = Message.query.filter(Message.partner_id == partner.id, Message.media_url.isnot(None)).count() > 0
         
         if latest:  # Only show partners with messages
+            # Apply filters
+            if filter_unread and unread == 0:
+                continue
+            if filter_has_media and not has_any_media:
+                continue
+                
             conversations.append({
                 'partner_id': partner.id,
                 'name': partner.full_name,
+                'first_name': partner.first_name,
                 'company': partner.company,
                 'phone': partner.phone,
+                'region': partner.region.name if partner.region else None,
+                'tsd': partner.tsd.name if partner.tsd else None,
+                'tags': [{'id': t.id, 'name': t.name, 'color': t.color} for t in partner.tags],
+                'notes': partner.notes,
+                'opted_out': partner.opted_out,
+                'pinned': partner.pinned if hasattr(partner, 'pinned') else False,
+                'archived': partner.archived if hasattr(partner, 'archived') else False,
                 'latest_message': latest.body,
                 'latest_time': latest.created_at.isoformat(),
                 'has_media': latest.media_url is not None,
+                'has_any_media': has_any_media,
                 'unread': unread,
-                'direction': latest.direction
+                'total_messages': total_messages,
+                'direction': latest.direction,
+                'last_contacted': partner.last_contacted.isoformat() if partner.last_contacted else None
             })
     
-    conversations.sort(key=lambda x: x['latest_time'], reverse=True)
+    # Sort: pinned first, then by latest time
+    conversations.sort(key=lambda x: (not x.get('pinned', False), x['latest_time']), reverse=True)
+    conversations.sort(key=lambda x: not x.get('pinned', False))
+    
     return jsonify(conversations)
+
+# API: Pin/Unpin conversation
+@app.route('/api/partners/<int:id>/pin', methods=['POST'])
+@login_required
+def api_pin_partner(id):
+    partner = Partner.query.get_or_404(id)
+    partner.pinned = not partner.pinned
+    db.session.commit()
+    return jsonify({'success': True, 'pinned': partner.pinned})
+
+# API: Archive/Unarchive conversation
+@app.route('/api/partners/<int:id>/archive', methods=['POST'])
+@login_required
+def api_archive_partner(id):
+    partner = Partner.query.get_or_404(id)
+    partner.archived = not partner.archived
+    db.session.commit()
+    return jsonify({'success': True, 'archived': partner.archived})
+
+# API: Update partner notes
+@app.route('/api/partners/<int:id>/notes', methods=['POST'])
+@login_required
+def api_update_notes(id):
+    partner = Partner.query.get_or_404(id)
+    data = request.json
+    partner.notes = data.get('notes', '')
+    db.session.commit()
+    return jsonify({'success': True})
+
+# API: Export conversation
+@app.route('/api/partners/<int:id>/export')
+@login_required
+def api_export_conversation(id):
+    partner = Partner.query.get_or_404(id)
+    messages = Message.query.filter_by(partner_id=id).order_by(Message.created_at).all()
+    
+    export_format = request.args.get('format', 'txt')
+    
+    if export_format == 'txt':
+        content = f"Conversation with {partner.full_name}\n"
+        content += f"Phone: {partner.phone}\n"
+        content += f"Company: {partner.company or 'N/A'}\n"
+        content += f"Exported: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}\n"
+        content += "=" * 50 + "\n\n"
+        
+        for m in messages:
+            direction = "→ You" if m.direction == 'outbound' else f"← {partner.first_name}"
+            time = m.created_at.strftime('%Y-%m-%d %H:%M')
+            content += f"[{time}] {direction}:\n{m.body or '[Media]'}\n\n"
+        
+        return Response(
+            content,
+            mimetype='text/plain',
+            headers={'Content-Disposition': f'attachment; filename=conversation_{partner.first_name}_{id}.txt'}
+        )
+    
+    return jsonify({'error': 'Unsupported format'}), 400
 
 # API: Dashboard Stats
 @app.route('/api/stats')

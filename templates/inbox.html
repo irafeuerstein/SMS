@@ -1,6 +1,137 @@
 {% extends 'base.html' %}
 {% block title %}Inbox - SilverSky Partners{% endblock %}
 
+{% block extra_css %}
+<style>
+    .chat-header {
+        background: var(--bg-card);
+        border-bottom: 1px solid var(--border);
+        padding: 12px 16px;
+        margin: -16px -16px 16px -16px;
+    }
+    .chat-header-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+    .chat-header-name {
+        font-weight: 600;
+        font-size: 1rem;
+    }
+    .chat-header-company {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+    }
+    .chat-header-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+    }
+    .chat-actions {
+        display: flex;
+        gap: 4px;
+    }
+    .chat-action-btn {
+        background: var(--bg-hover);
+        border: none;
+        color: var(--text-secondary);
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.9rem;
+    }
+    .chat-action-btn:hover {
+        color: var(--accent);
+    }
+    .chat-action-btn.active {
+        color: var(--accent);
+        background: rgba(0, 212, 170, 0.15);
+    }
+    .filter-tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+        overflow-x: auto;
+        padding-bottom: 4px;
+    }
+    .filter-tab {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        color: var(--text-secondary);
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .filter-tab.active {
+        background: var(--accent);
+        color: var(--bg-dark);
+        border-color: var(--accent);
+    }
+    .convo-item.pinned {
+        border-left: 3px solid var(--accent);
+    }
+    .pin-icon {
+        color: var(--accent);
+        font-size: 0.7rem;
+        margin-left: 4px;
+    }
+    .notes-section {
+        background: var(--bg-dark);
+        border-radius: 8px;
+        padding: 10px;
+        margin-top: 8px;
+    }
+    .notes-textarea {
+        width: 100%;
+        background: transparent;
+        border: none;
+        color: var(--text-primary);
+        font-size: 0.8rem;
+        resize: none;
+        outline: none;
+    }
+    .new-messages-btn {
+        position: fixed;
+        bottom: 180px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--accent);
+        color: var(--bg-dark);
+        border: none;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+        display: none;
+        z-index: 50;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    }
+    .message-status {
+        font-size: 0.7rem;
+        margin-left: 4px;
+    }
+    .unread-badge-large {
+        background: var(--accent);
+        color: var(--bg-dark);
+        font-size: 0.7rem;
+        font-weight: 700;
+        padding: 3px 8px;
+        border-radius: 10px;
+        min-width: 22px;
+        text-align: center;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <header class="header">
     <button class="header-btn hidden" id="backBtn" onclick="showConversations()">
@@ -9,21 +140,40 @@
         </svg>
     </button>
     <h1 id="headerTitle">Inbox</h1>
-    <button class="header-btn" id="searchBtn" onclick="openModal('searchModal')">
-        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="24" height="24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-        </svg>
-    </button>
+    <div style="display: flex; gap: 4px;">
+        <button class="header-btn" id="filterBtn" onclick="openModal('filterModal')">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="24" height="24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
+            </svg>
+        </button>
+        <button class="header-btn" id="searchBtn" onclick="openModal('searchModal')">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="24" height="24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+        </button>
+    </div>
 </header>
 
 <main class="content" id="conversationsView">
+    <!-- Filter Tabs -->
+    <div class="filter-tabs">
+        <button class="filter-tab active" onclick="setFilter('all')">All</button>
+        <button class="filter-tab" onclick="setFilter('unread')">Unread</button>
+        <button class="filter-tab" onclick="setFilter('media')">Has Media</button>
+        <button class="filter-tab" onclick="setFilter('archived')">Archived</button>
+    </div>
     <div id="conversationsList">
         <div class="loading"><div class="spinner"></div></div>
     </div>
 </main>
 
-<main class="content hidden" id="chatView" style="padding-bottom: 160px;">
+<main class="content hidden" id="chatView" style="padding-bottom: 180px;">
+    <!-- Chat Header with Partner Info -->
+    <div class="chat-header" id="chatHeader"></div>
+    
     <div class="message-list" id="messageList"></div>
+    
+    <button class="new-messages-btn" id="newMessagesBtn" onclick="scrollToBottom()">↓ New messages</button>
 </main>
 
 <div class="compose-bar hidden" id="composeBar">
@@ -66,6 +216,7 @@
     <input type="file" id="mediaInput" accept="image/*,video/*,audio/*" style="display: none;" onchange="handleMediaSelect(event)">
 </div>
 
+<!-- Recording Modal -->
 <div class="modal-overlay" id="recordModal">
     <div class="modal" style="text-align: center;">
         <div class="modal-handle"></div>
@@ -92,6 +243,59 @@
         <button class="btn btn-secondary btn-block mt-4" onclick="closeModal('searchModal')">Close</button>
     </div>
 </div>
+
+<!-- Filter Modal -->
+<div class="modal-overlay" id="filterModal">
+    <div class="modal">
+        <div class="modal-handle"></div>
+        <h2 class="modal-title">Filter Conversations</h2>
+        <div class="form-group">
+            <label class="checkbox-item">
+                <input type="checkbox" id="filterUnread" onchange="applyFilters()">
+                <span>Unread only</span>
+            </label>
+        </div>
+        <div class="form-group">
+            <label class="checkbox-item">
+                <input type="checkbox" id="filterHasMedia" onchange="applyFilters()">
+                <span>Has media</span>
+            </label>
+        </div>
+        <div class="form-group">
+            <label class="checkbox-item">
+                <input type="checkbox" id="filterArchived" onchange="applyFilters()">
+                <span>Show archived</span>
+            </label>
+        </div>
+        <button class="btn btn-block mt-4" onclick="closeModal('filterModal')">Apply</button>
+    </div>
+</div>
+
+<!-- Partner Actions Modal -->
+<div class="modal-overlay" id="partnerActionsModal">
+    <div class="modal">
+        <div class="modal-handle"></div>
+        <h2 class="modal-title" id="partnerActionsTitle">Actions</h2>
+        <div class="settings-list" style="margin-bottom: 16px;">
+            <div class="settings-item" onclick="togglePin()" style="cursor: pointer;">
+                <span class="settings-item-label" id="pinLabel">📌 Pin conversation</span>
+            </div>
+            <div class="settings-item" onclick="toggleArchive()" style="cursor: pointer;">
+                <span class="settings-item-label" id="archiveLabel">📦 Archive</span>
+            </div>
+            <div class="settings-item" onclick="exportConversation()" style="cursor: pointer;">
+                <span class="settings-item-label">📄 Export chat</span>
+            </div>
+            <div class="settings-item" onclick="editPartnerFromChat()" style="cursor: pointer;">
+                <span class="settings-item-label">✏️ Edit partner</span>
+            </div>
+            <a href="" id="callLink" class="settings-item" style="text-decoration: none; color: inherit;">
+                <span class="settings-item-label">📞 Call</span>
+            </a>
+        </div>
+        <button class="btn btn-secondary btn-block" onclick="closeModal('partnerActionsModal')">Cancel</button>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -105,6 +309,21 @@ let recordedChunks = [];
 let recordingTimer = null;
 let recordingSeconds = 0;
 let mediaStream = null;
+let currentFilter = 'all';
+let currentRecordingType = null;
+
+// Filters
+function setFilter(filter) {
+    currentFilter = filter;
+    document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    loadConversations();
+}
+
+function applyFilters() {
+    loadConversations();
+    closeModal('filterModal');
+}
 
 function updateCharCountInbox() {
     const text = document.getElementById('messageInput').value;
@@ -141,7 +360,17 @@ function insertInboxVariable(varName) {
 
 async function loadConversations() {
     try {
-        const res = await fetch('/api/conversations');
+        let url = '/api/conversations?';
+        
+        if (currentFilter === 'archived') {
+            url += 'archived=true&';
+        } else if (currentFilter === 'unread') {
+            url += 'unread=true&';
+        } else if (currentFilter === 'media') {
+            url += 'has_media=true&';
+        }
+        
+        const res = await fetch(url);
         conversations = await res.json();
         renderConversations();
         
@@ -162,7 +391,7 @@ function renderConversations() {
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
                 </svg>
-                <h3>No conversations yet</h3>
+                <h3>${currentFilter === 'archived' ? 'No archived conversations' : 'No conversations yet'}</h3>
                 <p>Start by messaging a partner</p>
             </div>
         `;
@@ -170,15 +399,22 @@ function renderConversations() {
     }
     
     container.innerHTML = conversations.map(c => `
-        <div class="convo-item" onclick="openConversation(${c.partner_id})">
+        <div class="convo-item ${c.pinned ? 'pinned' : ''}" onclick="openConversation(${c.partner_id})">
             <div class="convo-avatar">${getInitials(c.name)}</div>
             <div class="convo-content">
-                <div class="convo-name">${escapeHtml(c.name)}</div>
-                <div class="convo-preview">${c.has_media ? '📎 ' : ''}${escapeHtml(c.latest_message || '')}</div>
+                <div class="convo-name">
+                    ${escapeHtml(c.name)}
+                    ${c.pinned ? '<span class="pin-icon">📌</span>' : ''}
+                    ${c.opted_out ? '<span style="color: var(--error); font-size: 0.65rem; margin-left: 4px;">OPTED OUT</span>' : ''}
+                </div>
+                <div class="convo-preview">
+                    ${c.direction === 'inbound' ? '← ' : '→ '}
+                    ${c.has_media && !c.latest_message ? '[Media]' : escapeHtml(c.latest_message || '')}
+                </div>
             </div>
             <div class="convo-meta">
                 <div class="convo-time">${formatTime(c.latest_time)}</div>
-                ${c.unread > 0 ? `<div class="convo-badge">${c.unread}</div>` : ''}
+                ${c.unread > 0 ? `<div class="unread-badge-large">${c.unread}</div>` : ''}
             </div>
         </div>
     `).join('');
@@ -193,44 +429,144 @@ function escapeHtml(str) {
 
 async function openConversation(partnerId) {
     currentPartnerId = partnerId;
+    currentPartner = conversations.find(c => c.partner_id === partnerId);
     
-    try {
+    if (!currentPartner) {
+        // Fetch partner details if not in conversations list
         const res = await fetch(`/api/partners/${partnerId}`);
         currentPartner = await res.json();
-    } catch (err) {}
+    }
     
     document.getElementById('conversationsView').classList.add('hidden');
     document.getElementById('chatView').classList.remove('hidden');
     document.getElementById('composeBar').classList.remove('hidden');
     document.getElementById('backBtn').classList.remove('hidden');
-    document.getElementById('headerTitle').textContent = currentPartner?.full_name || 'Chat';
+    document.getElementById('filterBtn').classList.add('hidden');
+    document.getElementById('searchBtn').classList.add('hidden');
+    document.getElementById('headerTitle').textContent = currentPartner.name || currentPartner.full_name;
     
-    // Disable compose if opted out
-    if (currentPartner?.opted_out) {
-        document.getElementById('messageInput').disabled = true;
-        document.getElementById('messageInput').placeholder = 'Partner has opted out';
-        document.getElementById('sendMsgBtn').disabled = true;
-    } else {
-        document.getElementById('messageInput').disabled = false;
-        document.getElementById('messageInput').placeholder = 'Type a message...';
-        document.getElementById('sendMsgBtn').disabled = false;
+    // Handle opted out
+    if (currentPartner.opted_out) {
+        document.getElementById('composeBar').innerHTML = `
+            <div style="text-align: center; padding: 16px; color: var(--error);">
+                ⚠️ This partner has opted out of messages
+            </div>
+        `;
     }
     
+    renderChatHeader();
     loadMessages();
+    
+    history.replaceState(null, '', `/inbox?partner=${partnerId}`);
+}
+
+function renderChatHeader() {
+    const p = currentPartner;
+    const tagsHtml = (p.tags || []).map(t => {
+        const colors = {
+            accent: 'background: rgba(0, 212, 170, 0.15); color: var(--accent);',
+            warning: 'background: rgba(255, 187, 0, 0.15); color: var(--warning);',
+            error: 'background: rgba(255, 85, 102, 0.15); color: var(--error);',
+            secondary: 'background: var(--bg-hover); color: var(--text-secondary);'
+        };
+        return `<span class="chip" style="${colors[t.color] || colors.secondary}">${escapeHtml(t.name)}</span>`;
+    }).join('');
+    
+    document.getElementById('chatHeader').innerHTML = `
+        <div class="chat-header-top">
+            <div>
+                <div class="chat-header-name">${escapeHtml(p.name || p.full_name)}</div>
+                <div class="chat-header-company">${escapeHtml(p.company || p.phone)}</div>
+            </div>
+            <div class="chat-actions">
+                <button class="chat-action-btn ${p.pinned ? 'active' : ''}" onclick="togglePin()" title="Pin">📌</button>
+                <button class="chat-action-btn" onclick="openModal('partnerActionsModal')" title="More">⋯</button>
+            </div>
+        </div>
+        <div class="chat-header-meta">
+            ${p.region ? `<span class="chip">${escapeHtml(p.region)}</span>` : ''}
+            ${p.tsd ? `<span class="chip">${escapeHtml(p.tsd)}</span>` : ''}
+            ${tagsHtml}
+        </div>
+        ${p.last_contacted ? `<div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 8px;">Last contacted: ${new Date(p.last_contacted).toLocaleDateString()}</div>` : ''}
+        
+        <div class="notes-section">
+            <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px;">Notes</div>
+            <textarea class="notes-textarea" id="partnerNotes" rows="2" placeholder="Add notes about this partner..." onblur="saveNotes()">${escapeHtml(p.notes || '')}</textarea>
+        </div>
+    `;
+    
+    // Update actions modal labels
+    document.getElementById('pinLabel').textContent = p.pinned ? '📌 Unpin conversation' : '📌 Pin conversation';
+    document.getElementById('archiveLabel').textContent = p.archived ? '📦 Unarchive' : '📦 Archive';
+    document.getElementById('callLink').href = `tel:${p.phone}`;
+    document.getElementById('partnerActionsTitle').textContent = p.name || p.full_name;
+}
+
+async function saveNotes() {
+    const notes = document.getElementById('partnerNotes').value;
+    if (currentPartner.notes === notes) return;
+    
+    try {
+        await fetch(`/api/partners/${currentPartnerId}/notes`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ notes })
+        });
+        currentPartner.notes = notes;
+        showToast('Notes saved');
+    } catch (err) {
+        showToast('Failed to save notes', 'error');
+    }
+}
+
+async function togglePin() {
+    try {
+        const res = await fetch(`/api/partners/${currentPartnerId}/pin`, { method: 'POST' });
+        const data = await res.json();
+        currentPartner.pinned = data.pinned;
+        renderChatHeader();
+        showToast(data.pinned ? 'Conversation pinned' : 'Conversation unpinned');
+        closeModal('partnerActionsModal');
+    } catch (err) {
+        showToast('Failed to update', 'error');
+    }
+}
+
+async function toggleArchive() {
+    try {
+        const res = await fetch(`/api/partners/${currentPartnerId}/archive`, { method: 'POST' });
+        const data = await res.json();
+        currentPartner.archived = data.archived;
+        showToast(data.archived ? 'Conversation archived' : 'Conversation unarchived');
+        closeModal('partnerActionsModal');
+        if (data.archived) showConversations();
+    } catch (err) {
+        showToast('Failed to update', 'error');
+    }
+}
+
+function exportConversation() {
+    window.location.href = `/api/partners/${currentPartnerId}/export?format=txt`;
+    closeModal('partnerActionsModal');
+}
+
+function editPartnerFromChat() {
+    closeModal('partnerActionsModal');
+    window.location.href = `/partners?edit=${currentPartnerId}`;
 }
 
 function showConversations() {
-    currentPartnerId = null;
-    currentPartner = null;
-    pendingMedia = null;
-    document.getElementById('mediaPreviewContainer').innerHTML = '';
-    document.getElementById('charCountInbox').textContent = '';
-    
-    document.getElementById('conversationsView').classList.remove('hidden');
     document.getElementById('chatView').classList.add('hidden');
     document.getElementById('composeBar').classList.add('hidden');
+    document.getElementById('conversationsView').classList.remove('hidden');
     document.getElementById('backBtn').classList.add('hidden');
+    document.getElementById('filterBtn').classList.remove('hidden');
+    document.getElementById('searchBtn').classList.remove('hidden');
     document.getElementById('headerTitle').textContent = 'Inbox';
+    
+    currentPartnerId = null;
+    currentPartner = null;
     
     history.replaceState(null, '', '/inbox');
     loadConversations();
@@ -267,14 +603,20 @@ function renderMessages(messages) {
         </div>
     `).join('');
     
+    scrollToBottom();
+}
+
+function scrollToBottom() {
+    const container = document.getElementById('messageList');
     container.scrollTop = container.scrollHeight;
+    document.getElementById('newMessagesBtn').style.display = 'none';
 }
 
 function getStatusIcon(status) {
-    if (status === 'delivered') return ' <span style="color: var(--accent);">✓✓</span>';
-    if (status === 'sent') return ' <span style="color: var(--text-muted);">✓</span>';
-    if (status === 'failed' || status === 'undelivered') return ' <span style="color: var(--error);">✕</span>';
-    if (status === 'queued' || status === 'sending') return ' <span style="color: var(--text-muted);">⏳</span>';
+    if (status === 'delivered') return '<span class="message-status" style="color: var(--accent);">✓✓</span>';
+    if (status === 'sent') return '<span class="message-status" style="color: var(--text-muted);">✓</span>';
+    if (status === 'failed' || status === 'undelivered') return '<span class="message-status" style="color: var(--error);">✕</span>';
+    if (status === 'queued' || status === 'sending') return '<span class="message-status" style="color: var(--text-muted);">⏳</span>';
     return '';
 }
 
@@ -282,47 +624,7 @@ function renderMedia(url, type) {
     if (type === 'image') return `<div class="message-media"><img src="${url}" alt="Image" style="max-width:100%;border-radius:8px;cursor:pointer;" onclick="window.open('${url}')"></div>`;
     if (type === 'video') return `<div class="message-media"><video src="${url}" controls style="max-width:100%;border-radius:8px;"></video></div>`;
     if (type === 'audio') return `<div class="message-media"><audio src="${url}" controls style="width:100%;"></audio></div>`;
-    return '';
-}
-
-async function sendMessage() {
-    const input = document.getElementById('messageInput');
-    const message = input.value.trim();
-    
-    if (!message && !pendingMedia) return;
-    
-    const data = { partner_id: currentPartnerId, message };
-    if (pendingMedia) {
-        data.media_url = pendingMedia.url;
-        data.media_type = pendingMedia.type;
-    }
-    
-    document.getElementById('sendMsgBtn').disabled = true;
-    
-    try {
-        const res = await fetch('/api/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-        
-        const result = await res.json();
-        if (result.success) {
-            input.value = '';
-            pendingMedia = null;
-            document.getElementById('mediaPreviewContainer').innerHTML = '';
-            document.getElementById('charCountInbox').textContent = '';
-            loadMessages();
-        } else {
-            alert(result.error || 'Failed to send');
-        }
-    } catch (err) {
-        alert('Failed to send message');
-    } finally {
-        if (!currentPartner?.opted_out) {
-            document.getElementById('sendMsgBtn').disabled = false;
-        }
-    }
+    return `<div class="message-media"><a href="${url}" target="_blank">📎 Attachment</a></div>`;
 }
 
 function handleKeydown(e) {
@@ -332,121 +634,161 @@ function handleKeydown(e) {
     }
 }
 
-async function handleMediaSelect(e) {
-    const file = e.target.files[0];
-    if (file) await uploadMedia(file);
-    e.target.value = '';
-}
-
-async function uploadMedia(file) {
-    const formData = new FormData();
-    formData.append('file', file);
+async function sendMessage() {
+    const input = document.getElementById('messageInput');
+    const body = input.value.trim();
+    
+    if (!body && !pendingMedia) return;
+    if (currentPartner?.opted_out) return;
+    
+    const btn = document.getElementById('sendMsgBtn');
+    btn.disabled = true;
     
     try {
-        const res = await fetch('/api/upload', { method: 'POST', body: formData });
+        const data = { partner_id: currentPartnerId, message: body };
+        if (pendingMedia) {
+            data.media_url = pendingMedia.url;
+            data.media_type = pendingMedia.type;
+        }
+        
+        const res = await fetch('/api/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        
         const result = await res.json();
         if (result.success) {
-            pendingMedia = { url: result.url, type: result.media_type };
-            showMediaPreview(file, result.media_type);
+            input.value = '';
+            updateCharCountInbox();
+            clearMediaPreview();
+            loadMessages();
         } else {
-            alert(result.error || 'Upload failed');
+            showToast(result.error || 'Failed to send', 'error');
         }
     } catch (err) {
-        alert('Upload failed');
+        showToast('Failed to send message', 'error');
+    } finally {
+        btn.disabled = false;
     }
 }
 
-function showMediaPreview(file, type) {
+function handleMediaSelect(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    uploadMedia(file);
+}
+
+async function uploadMedia(file) {
+    const fd = new FormData();
+    fd.append('file', file);
+    
+    try {
+        const res = await fetch('/api/upload', { method: 'POST', body: fd });
+        const data = await res.json();
+        
+        if (data.success) {
+            pendingMedia = { url: data.url, type: data.media_type };
+            showMediaPreview();
+        } else {
+            showToast(data.error || 'Upload failed', 'error');
+        }
+    } catch (err) {
+        showToast('Upload failed', 'error');
+    }
+}
+
+async function uploadMediaWithType(blob, type) {
+    const fd = new FormData();
+    fd.append('file', blob, `recording.webm`);
+    fd.append('media_type', type);
+    
+    try {
+        const res = await fetch('/api/upload', { method: 'POST', body: fd });
+        const data = await res.json();
+        
+        if (data.success) {
+            pendingMedia = { url: data.url, type: data.media_type };
+            showMediaPreview();
+        } else {
+            showToast(data.error || 'Upload failed', 'error');
+        }
+    } catch (err) {
+        showToast('Upload failed', 'error');
+    }
+}
+
+function showMediaPreview() {
     const container = document.getElementById('mediaPreviewContainer');
-    const url = URL.createObjectURL(file);
-    
-    let preview = '';
-    if (type === 'image') preview = `<img src="${url}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;">`;
-    else if (type === 'video') preview = `<video src="${url}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;"></video>`;
-    else preview = `<div style="padding:8px;">🎵 Audio</div>`;
-    
     container.innerHTML = `
-        <div class="media-preview">
-            ${preview}
-            <div class="media-preview-info">${type}</div>
-            <button class="media-preview-remove" onclick="removeMediaPreview()">✕</button>
+        <div style="background: var(--bg-dark); border-radius: 8px; padding: 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 0.8rem; color: var(--accent);">📎 ${pendingMedia.type} attached</span>
+            <button onclick="clearMediaPreview()" style="background: none; border: none; color: var(--text-muted); cursor: pointer;">✕</button>
         </div>
     `;
 }
 
-function removeMediaPreview() {
+function clearMediaPreview() {
     pendingMedia = null;
     document.getElementById('mediaPreviewContainer').innerHTML = '';
 }
 
-let currentRecordingType = null;
-
-async function startRecording(type) {
+// Recording functions
+function startRecording(type) {
     currentRecordingType = type;
-    recordedChunks = [];
-    recordingSeconds = 0;
+    const constraints = type === 'video' 
+        ? { video: { facingMode: 'user' }, audio: true }
+        : { audio: true };
     
-    try {
-        const constraints = type === 'video' ? { audio: true, video: { facingMode: 'user' } } : { audio: true };
-        mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-        
-        document.getElementById('recordTitle').textContent = type === 'video' ? 'Recording Video...' : 'Recording Voice...';
-        document.getElementById('recordTimer').textContent = '0:00';
-        
-        const videoPreview = document.getElementById('videoPreview');
-        if (type === 'video') {
-            videoPreview.style.display = 'block';
-            videoPreview.srcObject = mediaStream;
-            videoPreview.play();
-        } else {
-            videoPreview.style.display = 'none';
-        }
-        
-        mediaRecorder = new MediaRecorder(mediaStream, { mimeType: type === 'video' ? 'video/webm' : 'audio/webm' });
-        mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
-        mediaRecorder.onstop = async () => {
-            const recType = currentRecordingType;
-            const mimeType = recType === 'video' ? 'video/webm' : 'audio/webm';
-            const blob = new Blob(recordedChunks, { type: mimeType });
-            const file = new File([blob], 'recording.webm', { type: mimeType });
-            await uploadMediaWithType(file, recType);
-        };
-        
-        mediaRecorder.start();
-        recordingTimer = setInterval(() => {
-            recordingSeconds++;
-            document.getElementById('recordTimer').textContent = `${Math.floor(recordingSeconds/60)}:${(recordingSeconds%60).toString().padStart(2,'0')}`;
-        }, 1000);
-        
-        openModal('recordModal');
-    } catch (err) {
-        alert('Could not access camera/microphone');
-    }
+    navigator.mediaDevices.getUserMedia(constraints)
+        .then(stream => {
+            mediaStream = stream;
+            
+            if (type === 'video') {
+                const preview = document.getElementById('videoPreview');
+                preview.srcObject = stream;
+                preview.style.display = 'block';
+                preview.play();
+            }
+            
+            mediaRecorder = new MediaRecorder(stream);
+            recordedChunks = [];
+            
+            mediaRecorder.ondataavailable = e => {
+                if (e.data.size > 0) recordedChunks.push(e.data);
+            };
+            
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: type === 'video' ? 'video/webm' : 'audio/webm' });
+                uploadMediaWithType(blob, currentRecordingType);
+                cleanupRecording();
+                closeModal('recordModal');
+            };
+            
+            mediaRecorder.start();
+            recordingSeconds = 0;
+            updateRecordTimer();
+            recordingTimer = setInterval(updateRecordTimer, 1000);
+            
+            document.getElementById('recordTitle').textContent = type === 'video' ? 'Recording Video...' : 'Recording Audio...';
+            openModal('recordModal');
+        })
+        .catch(err => {
+            showToast('Could not access microphone/camera', 'error');
+        });
 }
 
-async function uploadMediaWithType(file, type) {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('media_type', type);
-    
-    try {
-        const res = await fetch('/api/upload', { method: 'POST', body: formData });
-        const result = await res.json();
-        if (result.success) {
-            pendingMedia = { url: result.url, type: result.media_type };
-            showMediaPreview(file, result.media_type);
-        } else {
-            alert(result.error || 'Upload failed');
-        }
-    } catch (err) {
-        alert('Upload failed');
-    }
+function updateRecordTimer() {
+    recordingSeconds++;
+    const mins = Math.floor(recordingSeconds / 60);
+    const secs = recordingSeconds % 60;
+    document.getElementById('recordTimer').textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
 function stopRecording() {
-    if (mediaRecorder?.state !== 'inactive') mediaRecorder.stop();
-    cleanupRecording();
-    closeModal('recordModal');
+    if (mediaRecorder?.state !== 'inactive') {
+        mediaRecorder.stop();
+    }
 }
 
 function cancelRecording() {
@@ -460,22 +802,11 @@ function cleanupRecording() {
     if (recordingTimer) { clearInterval(recordingTimer); recordingTimer = null; }
     if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
     document.getElementById('videoPreview').srcObject = null;
+    document.getElementById('videoPreview').style.display = 'none';
+    currentRecordingType = null;
 }
 
-function getInitials(name) { return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase(); }
-function formatTime(iso) {
-    if (!iso) return '';
-    const diff = Date.now() - new Date(iso);
-    if (diff < 60000) return 'Now';
-    if (diff < 3600000) return Math.floor(diff/60000) + 'm';
-    if (diff < 86400000) return Math.floor(diff/3600000) + 'h';
-    return new Date(iso).toLocaleDateString();
-}
-function formatMessageTime(iso) { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
-function openModal(id) { document.getElementById(id).classList.add('active'); }
-function closeModal(id) { document.getElementById(id).classList.remove('active'); }
-
-// Message Search
+// Search
 let searchTimeout = null;
 
 function debounceSearch() {
@@ -525,6 +856,30 @@ function goToMessage(partnerId) {
     document.getElementById('searchInput').value = '';
     openConversation(partnerId);
 }
+
+// Utility functions
+function getInitials(name) { return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase(); }
+
+function formatTime(iso) {
+    if (!iso) return '';
+    const diff = Date.now() - new Date(iso);
+    if (diff < 60000) return 'Now';
+    if (diff < 3600000) return Math.floor(diff/60000) + 'm';
+    if (diff < 86400000) return Math.floor(diff/3600000) + 'h';
+    return new Date(iso).toLocaleDateString();
+}
+
+function formatMessageTime(iso) { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+// Scroll detection for new messages button
+document.getElementById('messageList')?.addEventListener('scroll', function() {
+    const el = this;
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+    document.getElementById('newMessagesBtn').style.display = isNearBottom ? 'none' : 'block';
+});
 
 loadConversations();
 </script>
