@@ -3,6 +3,23 @@
 
 {% block extra_css %}
 <style>
+    /* Compose Bar - Fixed at bottom */
+    .compose-bar {
+        position: fixed;
+        bottom: 60px;
+        left: 0;
+        right: 0;
+        background: var(--bg-card);
+        border-top: 1px solid var(--border);
+        padding: 12px 16px;
+        padding-bottom: calc(12px + env(safe-area-inset-bottom));
+        z-index: 100;
+    }
+    .compose-bar-inner {
+        max-width: 600px;
+        margin: 0 auto;
+    }
+    
     .chat-header {
         background: var(--bg-card);
         border-bottom: 1px solid var(--border);
