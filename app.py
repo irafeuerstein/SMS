@@ -2231,7 +2231,51 @@ def send_scheduled_messages():
 # Initialize database with default tenant and products
 def init_db():
     with app.app_context():
-        db.create_all()
+        # First, run migrations to add new columns if needed
+        try:
+            from sqlalchemy import text
+            with db.engine.connect() as conn:
+                # Check if tenant table exists
+                result = conn.execute(text("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'tenant')"))
+                tenant_exists = result.scalar()
+                
+                if not tenant_exists:
+                    # Fresh install - just create all tables
+                    db.create_all()
+                else:
+                    # Existing install - need to add new columns
+                    # Check and add columns to each table
+                    migrations = [
+                        ("partner", "tenant_id", "ALTER TABLE partner ADD COLUMN tenant_id INTEGER"),
+                        ("partner", "user_id", "ALTER TABLE partner ADD COLUMN user_id INTEGER"),
+                        ("region", "tenant_id", "ALTER TABLE region ADD COLUMN tenant_id INTEGER"),
+                        ("tsd", "tenant_id", "ALTER TABLE tsd ADD COLUMN tenant_id INTEGER"),
+                        ("product", "tenant_id", "ALTER TABLE product ADD COLUMN tenant_id INTEGER"),
+                        ("tag", "tenant_id", "ALTER TABLE tag ADD COLUMN tenant_id INTEGER"),
+                        ("message", "user_id", "ALTER TABLE message ADD COLUMN user_id INTEGER"),
+                        ("message_template", "tenant_id", "ALTER TABLE message_template ADD COLUMN tenant_id INTEGER"),
+                        ("scheduled_message", "tenant_id", "ALTER TABLE scheduled_message ADD COLUMN tenant_id INTEGER"),
+                        ("scheduled_message", "user_id", "ALTER TABLE scheduled_message ADD COLUMN user_id INTEGER"),
+                        ("ai_knowledge", "tenant_id", "ALTER TABLE ai_knowledge ADD COLUMN tenant_id INTEGER"),
+                        ("ai_settings", "tenant_id", "ALTER TABLE ai_settings ADD COLUMN tenant_id INTEGER"),
+                    ]
+                    
+                    for table, column, sql in migrations:
+                        try:
+                            check_sql = text(f"SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_name = '{table}' AND column_name = '{column}')")
+                            exists = conn.execute(check_sql).scalar()
+                            if not exists:
+                                conn.execute(text(sql))
+                                conn.commit()
+                        except Exception as e:
+                            print(f"Migration {table}.{column}: {e}")
+                    
+                    # Now create any new tables (tenant, user)
+                    db.create_all()
+        except Exception as e:
+            print(f"Migration error: {e}")
+            # Fallback: just try create_all
+            db.create_all()
         
         # Create default tenant if none exists
         tenant = Tenant.query.first()
@@ -2253,6 +2297,9 @@ def init_db():
             db.session.add(admin)
             db.session.commit()
         
+        # Get admin for migrations
+        admin = User.query.filter_by(role='admin').first()
+        
         # Add default products if none exist
         if Product.query.count() == 0:
             default_products = ['MxDR', 'Email Protection', 'Compliance']
@@ -2260,20 +2307,23 @@ def init_db():
                 db.session.add(Product(tenant_id=tenant.id, name=name))
             db.session.commit()
         
-        # Migration: Add tenant_id and user_id to existing records
-        admin = User.query.filter_by(role='admin').first()
+        # Migration: Update existing records with tenant_id and user_id
         if admin:
-            # Update partners without tenant_id
-            Partner.query.filter(Partner.tenant_id.is_(None)).update({'tenant_id': tenant.id, 'user_id': admin.id})
-            # Update other models without tenant_id
-            Region.query.filter(Region.tenant_id.is_(None)).update({'tenant_id': tenant.id})
-            TSD.query.filter(TSD.tenant_id.is_(None)).update({'tenant_id': tenant.id})
-            Product.query.filter(Product.tenant_id.is_(None)).update({'tenant_id': tenant.id})
-            Tag.query.filter(Tag.tenant_id.is_(None)).update({'tenant_id': tenant.id})
-            AIKnowledge.query.filter(AIKnowledge.tenant_id.is_(None)).update({'tenant_id': tenant.id})
-            MessageTemplate.query.filter(MessageTemplate.tenant_id.is_(None)).update({'tenant_id': tenant.id})
-            ScheduledMessage.query.filter(ScheduledMessage.tenant_id.is_(None)).update({'tenant_id': tenant.id})
-            db.session.commit()
+            try:
+                from sqlalchemy import text
+                with db.engine.connect() as conn:
+                    # Update records missing tenant_id
+                    conn.execute(text(f"UPDATE partner SET tenant_id = {tenant.id}, user_id = {admin.id} WHERE tenant_id IS NULL"))
+                    conn.execute(text(f"UPDATE region SET tenant_id = {tenant.id} WHERE tenant_id IS NULL"))
+                    conn.execute(text(f"UPDATE tsd SET tenant_id = {tenant.id} WHERE tenant_id IS NULL"))
+                    conn.execute(text(f"UPDATE product SET tenant_id = {tenant.id} WHERE tenant_id IS NULL"))
+                    conn.execute(text(f"UPDATE tag SET tenant_id = {tenant.id} WHERE tenant_id IS NULL"))
+                    conn.execute(text(f"UPDATE ai_knowledge SET tenant_id = {tenant.id} WHERE tenant_id IS NULL"))
+                    conn.execute(text(f"UPDATE message_template SET tenant_id = {tenant.id} WHERE tenant_id IS NULL"))
+                    conn.execute(text(f"UPDATE scheduled_message SET tenant_id = {tenant.id} WHERE tenant_id IS NULL"))
+                    conn.commit()
+            except Exception as e:
+                print(f"Data migration error: {e}")
 
 # API: User Settings (onboarding, calendar, password)
 @app.route('/api/user/settings', methods=['GET', 'PUT'])
