@@ -471,7 +471,18 @@ async function loadConversations() {
         
         const params = new URLSearchParams(location.search);
         const partnerId = params.get('partner');
-        if (partnerId) openConversation(parseInt(partnerId));
+        const prefillMsg = params.get('msg');
+        
+        if (partnerId) {
+            openConversation(parseInt(partnerId));
+            // Prefill message if provided
+            if (prefillMsg) {
+                setTimeout(() => {
+                    document.getElementById('messageInput').value = prefillMsg;
+                    updateCharCountInbox();
+                }, 300);
+            }
+        }
     } catch (err) {
         console.error(err);
     }
@@ -582,6 +593,7 @@ function renderChatHeader() {
             ${p.region ? `<span class="chip">${escapeHtml(p.region)}</span>` : ''}
             ${p.tsd ? `<span class="chip">${escapeHtml(p.tsd)}</span>` : ''}
             ${tagsHtml}
+            <span class="chip" id="bestTimeChip" style="background: rgba(102, 126, 234, 0.15); color: #667eea; display: none;">⏰ Loading...</span>
         </div>
         ${p.last_contacted ? `<div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 8px;">Last contacted: ${new Date(p.last_contacted).toLocaleDateString()}</div>` : ''}
         
@@ -596,6 +608,24 @@ function renderChatHeader() {
     document.getElementById('archiveLabel').textContent = p.archived ? '📦 Unarchive' : '📦 Archive';
     document.getElementById('callLink').href = `tel:${p.phone}`;
     document.getElementById('partnerActionsTitle').textContent = p.name || p.full_name;
+    
+    // Load best time to text
+    loadBestTime();
+}
+
+async function loadBestTime() {
+    try {
+        const res = await fetch(`/api/ai/best-time/${currentPartnerId}`);
+        const data = await res.json();
+        
+        const chip = document.getElementById('bestTimeChip');
+        if (data.best_time && data.confidence !== 'low') {
+            chip.textContent = `⏰ Best: ${data.best_day} ${data.best_time}`;
+            chip.style.display = 'inline-flex';
+        }
+    } catch (err) {
+        // Silently fail
+    }
 }
 
 async function saveNotes() {

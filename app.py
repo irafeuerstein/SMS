@@ -953,6 +953,239 @@ Example: {{"sentiment": "positive", "score": 75, "label": "Interested"}}"""
     except:
         return jsonify({'sentiment': 'neutral', 'score': 50, 'label': 'Unknown'})
 
+# AI: Predict best time to text a partner
+@app.route('/api/ai/best-time/<int:partner_id>')
+@login_required
+def api_ai_best_time(partner_id):
+    partner = Partner.query.get_or_404(partner_id)
+    
+    # Get inbound messages (their responses) with timestamps
+    responses = Message.query.filter_by(partner_id=partner_id, direction='inbound').all()
+    
+    if len(responses) < 2:
+        return jsonify({
+            'best_time': None,
+            'best_day': None,
+            'message': 'Not enough data yet. Need more responses to analyze patterns.',
+            'confidence': 'low'
+        })
+    
+    # Analyze response times
+    hours = {}
+    days = {}
+    
+    for msg in responses:
+        hour = msg.created_at.hour
+        day = msg.created_at.strftime('%A')
+        
+        hours[hour] = hours.get(hour, 0) + 1
+        days[day] = days.get(day, 0) + 1
+    
+    # Find peaks
+    best_hour = max(hours, key=hours.get) if hours else 10
+    best_day = max(days, key=days.get) if days else 'Tuesday'
+    
+    # Format time nicely
+    if best_hour < 12:
+        time_str = f"{best_hour}:00 AM" if best_hour != 0 else "12:00 AM"
+    elif best_hour == 12:
+        time_str = "12:00 PM"
+    else:
+        time_str = f"{best_hour - 12}:00 PM"
+    
+    confidence = 'high' if len(responses) >= 10 else 'medium' if len(responses) >= 5 else 'low'
+    
+    return jsonify({
+        'best_time': time_str,
+        'best_hour': best_hour,
+        'best_day': best_day,
+        'response_count': len(responses),
+        'confidence': confidence,
+        'hour_breakdown': hours,
+        'day_breakdown': days
+    })
+
+# AI: Ghost Alert - Find partners who've gone silent
+@app.route('/api/ai/ghost-alerts')
+@login_required
+def api_ai_ghost_alerts():
+    client = get_ai_client()
+    
+    ghosts = []
+    partners = Partner.query.filter_by(archived=False, opted_out=False).all()
+    
+    for partner in partners:
+        # Get their messages
+        messages = Message.query.filter_by(partner_id=partner.id).order_by(Message.created_at.desc()).all()
+        
+        if not messages:
+            continue
+        
+        # Check if last message was from us (they haven't replied)
+        last_msg = messages[0]
+        if last_msg.direction != 'outbound':
+            continue
+        
+        # Calculate their typical response time
+        response_times = []
+        for i, msg in enumerate(messages[:-1]):
+            if msg.direction == 'inbound':
+                # Find the outbound message before this
+                for prev_msg in messages[i+1:]:
+                    if prev_msg.direction == 'outbound':
+                        delta = (msg.created_at - prev_msg.created_at).total_seconds() / 3600  # hours
+                        if delta > 0 and delta < 168:  # within a week
+                            response_times.append(delta)
+                        break
+        
+        if not response_times:
+            avg_response_hours = 48  # default assumption
+        else:
+            avg_response_hours = sum(response_times) / len(response_times)
+        
+        # How long since we messaged them?
+        hours_waiting = (datetime.utcnow() - last_msg.created_at).total_seconds() / 3600
+        
+        # If waiting longer than 2x their usual response time, they're ghosting
+        if hours_waiting > max(avg_response_hours * 2, 48):  # at least 48 hours
+            days_waiting = int(hours_waiting / 24)
+            
+            ghosts.append({
+                'partner_id': partner.id,
+                'name': partner.full_name,
+                'company': partner.company,
+                'last_message': last_msg.body[:100] if last_msg.body else '[Media]',
+                'last_message_date': last_msg.created_at.isoformat(),
+                'days_waiting': days_waiting,
+                'avg_response_hours': round(avg_response_hours, 1),
+                'urgency': 'high' if days_waiting > 7 else 'medium' if days_waiting > 3 else 'low'
+            })
+    
+    # Sort by days waiting (most urgent first)
+    ghosts.sort(key=lambda x: x['days_waiting'], reverse=True)
+    
+    # Generate re-engagement messages with AI if we have a client
+    if client and ghosts:
+        for ghost in ghosts[:5]:  # Only generate for top 5 to save API calls
+            try:
+                prompt = f"""Write a short, friendly SMS follow-up for someone who hasn't responded in {ghost['days_waiting']} days.
+
+Last message sent to them: "{ghost['last_message']}"
+
+Keep it under 160 characters. Be casual, not pushy. Don't guilt them. Maybe add value or give them an easy out.
+
+Return ONLY the message text."""
+
+                response = client.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=100,
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                ghost['suggested_message'] = response.content[0].text.strip().strip('"')
+            except:
+                ghost['suggested_message'] = f"Hey, just floating this back up - any thoughts?"
+    
+    return jsonify(ghosts)
+
+# AI: Next Best Action - Who to text today and what to say
+@app.route('/api/ai/next-actions')
+@login_required
+def api_ai_next_actions():
+    client = get_ai_client()
+    if not client:
+        return jsonify({'error': 'AI not configured'}), 400
+    
+    actions = []
+    partners = Partner.query.filter_by(archived=False, opted_out=False).all()
+    
+    partner_data = []
+    
+    for partner in partners:
+        messages = Message.query.filter_by(partner_id=partner.id).order_by(Message.created_at.desc()).limit(5).all()
+        
+        if not messages:
+            # Never contacted - potential action
+            partner_data.append({
+                'id': partner.id,
+                'name': partner.full_name,
+                'company': partner.company,
+                'region': partner.region.name if partner.region else None,
+                'status': 'never_contacted',
+                'days_since_contact': None,
+                'last_direction': None,
+                'recent_messages': [],
+                'notes': partner.notes
+            })
+        else:
+            last_msg = messages[0]
+            days_since = (datetime.utcnow() - last_msg.created_at).days
+            
+            partner_data.append({
+                'id': partner.id,
+                'name': partner.full_name,
+                'company': partner.company,
+                'region': partner.region.name if partner.region else None,
+                'status': 'awaiting_reply' if last_msg.direction == 'outbound' else 'needs_response',
+                'days_since_contact': days_since,
+                'last_direction': last_msg.direction,
+                'recent_messages': [{'direction': m.direction, 'body': m.body[:100] if m.body else '[Media]'} for m in messages[:3]],
+                'notes': partner.notes
+            })
+    
+    # Use AI to prioritize and suggest actions
+    knowledge = get_ai_knowledge_context()
+    
+    prompt = f"""You're a sales AI assistant. Analyze these partners and recommend the top 5 actions for today.
+{knowledge}
+
+Partner data:
+{json.dumps(partner_data[:30], indent=2)}
+
+For each recommended action, provide:
+1. partner_id (number)
+2. priority: "high", "medium", or "low"  
+3. reason: Brief explanation why (under 50 chars)
+4. action: What to do ("send intro", "follow up", "respond", "re-engage", "check in")
+5. suggested_message: A ready-to-send SMS (under 160 chars)
+
+Consider:
+- Partners awaiting our response (needs_response) are highest priority
+- Never contacted partners are opportunities
+- Don't let good conversations go cold
+- Warm leads need nurturing
+
+Return ONLY a JSON array of 5 action objects. Example:
+[{{"partner_id": 1, "priority": "high", "reason": "They asked a question 2 days ago", "action": "respond", "suggested_message": "Hey! Great question about pricing..."}}]"""
+
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=1500,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        response_text = response.content[0].text.strip()
+        # Clean up if wrapped in code blocks
+        if response_text.startswith('```'):
+            response_text = response_text.split('```')[1]
+            if response_text.startswith('json'):
+                response_text = response_text[4:]
+        
+        actions = json.loads(response_text)
+        
+        # Enrich with partner details
+        for action in actions:
+            partner = Partner.query.get(action['partner_id'])
+            if partner:
+                action['partner_name'] = partner.full_name
+                action['partner_company'] = partner.company
+                action['partner_phone'] = partner.phone
+        
+        return jsonify(actions)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 # API: AI Knowledge Base
 @app.route('/api/ai/knowledge', methods=['GET', 'POST'])
 @login_required

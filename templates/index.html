@@ -51,6 +51,36 @@
         <div id="regionChart"></div>
     </div>
     
+    <!-- AI Insights -->
+    <div style="background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%); border-radius: 12px; padding: 16px; margin-bottom: 16px; border: 1px solid rgba(102, 126, 234, 0.3);">
+        <h2 style="font-size: 0.9rem; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+            <span style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">✨ AI Insights</span>
+        </h2>
+        
+        <!-- Next Best Actions -->
+        <div style="margin-bottom: 16px;">
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                <span>🎯 Today's Priority Actions</span>
+                <button class="btn btn-sm btn-ghost" onclick="loadNextActions()" id="refreshActionsBtn" style="padding: 2px 8px; font-size: 0.65rem;">Refresh</button>
+            </div>
+            <div id="nextActionsList">
+                <div style="text-align: center; padding: 12px; color: var(--text-muted); font-size: 0.8rem;">
+                    <button class="btn btn-sm" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none;" onclick="loadNextActions()">Load AI Recommendations</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Ghost Alerts -->
+        <div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px;">👻 Ghost Alerts</div>
+            <div id="ghostAlertsList">
+                <div style="text-align: center; padding: 12px; color: var(--text-muted); font-size: 0.8rem;">
+                    <button class="btn btn-sm btn-secondary" onclick="loadGhostAlerts()">Check for Ghosts</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <h2 style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 12px;">Quick Actions</h2>
     
     <div class="flex gap-2 mb-3">
@@ -184,6 +214,97 @@ function formatTime(iso) {
     if (diff < 3600000) return Math.floor(diff/60000) + 'm';
     if (diff < 86400000) return Math.floor(diff/3600000) + 'h';
     return d.toLocaleDateString();
+}
+
+// AI: Load Next Best Actions
+async function loadNextActions() {
+    const container = document.getElementById('nextActionsList');
+    const btn = document.getElementById('refreshActionsBtn');
+    
+    container.innerHTML = '<div style="text-align: center; padding: 12px;"><div class="spinner"></div></div>';
+    btn.disabled = true;
+    
+    try {
+        const res = await fetch('/api/ai/next-actions');
+        const actions = await res.json();
+        
+        if (actions.error) {
+            container.innerHTML = `<div style="text-align: center; padding: 12px; color: var(--error); font-size: 0.8rem;">${actions.error}</div>`;
+            return;
+        }
+        
+        if (actions.length === 0) {
+            container.innerHTML = '<div style="text-align: center; padding: 12px; color: var(--text-muted); font-size: 0.8rem;">No actions needed right now! 🎉</div>';
+            return;
+        }
+        
+        const priorityColors = {
+            high: 'var(--error)',
+            medium: 'var(--warning)',
+            low: 'var(--text-muted)'
+        };
+        
+        container.innerHTML = actions.map(a => `
+            <div style="background: var(--bg-card); border-radius: 8px; padding: 10px; margin-bottom: 8px; cursor: pointer;" onclick="handleAction(${a.partner_id}, '${escapeHtml(a.suggested_message || '')}')">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 4px;">
+                    <div style="font-weight: 600; font-size: 0.85rem;">${escapeHtml(a.partner_name || 'Unknown')}</div>
+                    <span style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; background: ${priorityColors[a.priority]}22; color: ${priorityColors[a.priority]};">${a.priority}</span>
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 6px;">${a.partner_company || ''}</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px;">💡 ${escapeHtml(a.reason)}</div>
+                <div style="font-size: 0.8rem; color: var(--accent); background: var(--bg-dark); padding: 6px 8px; border-radius: 6px;">
+                    "${escapeHtml(a.suggested_message || '')}"
+                </div>
+            </div>
+        `).join('');
+        
+    } catch (err) {
+        container.innerHTML = '<div style="text-align: center; padding: 12px; color: var(--error); font-size: 0.8rem;">Failed to load</div>';
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// AI: Load Ghost Alerts
+async function loadGhostAlerts() {
+    const container = document.getElementById('ghostAlertsList');
+    container.innerHTML = '<div style="text-align: center; padding: 12px;"><div class="spinner"></div></div>';
+    
+    try {
+        const res = await fetch('/api/ai/ghost-alerts');
+        const ghosts = await res.json();
+        
+        if (ghosts.length === 0) {
+            container.innerHTML = '<div style="text-align: center; padding: 12px; color: var(--accent); font-size: 0.8rem;">No ghosts! Everyone is engaged 👍</div>';
+            return;
+        }
+        
+        container.innerHTML = ghosts.slice(0, 5).map(g => `
+            <div style="background: var(--bg-card); border-radius: 8px; padding: 10px; margin-bottom: 8px; border-left: 3px solid ${g.urgency === 'high' ? 'var(--error)' : g.urgency === 'medium' ? 'var(--warning)' : 'var(--text-muted)'};">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <div style="font-weight: 600; font-size: 0.85rem;">${escapeHtml(g.name)}</div>
+                    <span style="font-size: 0.7rem; color: var(--error);">👻 ${g.days_waiting} days</span>
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px;">
+                    Last msg: "${escapeHtml(g.last_message.substring(0, 40))}${g.last_message.length > 40 ? '...' : ''}"
+                </div>
+                ${g.suggested_message ? `
+                    <div style="font-size: 0.8rem; color: var(--accent); background: var(--bg-dark); padding: 6px 8px; border-radius: 6px; cursor: pointer;" onclick="handleAction(${g.partner_id}, '${escapeHtml(g.suggested_message)}')">
+                        💬 "${escapeHtml(g.suggested_message)}"
+                    </div>
+                ` : ''}
+            </div>
+        `).join('');
+        
+    } catch (err) {
+        container.innerHTML = '<div style="text-align: center; padding: 12px; color: var(--error); font-size: 0.8rem;">Failed to load</div>';
+    }
+}
+
+function handleAction(partnerId, message) {
+    // Go to inbox with the partner and optionally pre-fill message
+    const url = `/inbox?partner=${partnerId}${message ? '&msg=' + encodeURIComponent(message) : ''}`;
+    location.href = url;
 }
 
 loadDashboard();
