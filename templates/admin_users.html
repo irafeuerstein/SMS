@@ -1,0 +1,319 @@
+{% extends 'base.html' %}
+{% block title %}Team Members - SilverSky SMS{% endblock %}
+
+{% block extra_css %}
+<style>
+    .user-card {
+        background: var(--bg-card);
+        border-radius: var(--radius-lg);
+        padding: 16px;
+        margin-bottom: 12px;
+        border: 1px solid var(--border);
+    }
+    .user-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+    .user-name { font-weight: 600; font-size: 1rem; }
+    .user-role {
+        font-size: 0.75rem;
+        padding: 2px 8px;
+        border-radius: 12px;
+        background: var(--bg-hover);
+        color: var(--text-secondary);
+    }
+    .user-role.admin { background: var(--accent-dim); color: var(--accent); }
+    .user-meta { font-size: 0.8rem; color: var(--text-muted); }
+    .user-stats {
+        display: flex;
+        gap: 16px;
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid var(--border);
+        font-size: 0.8rem;
+    }
+    .user-stat-label { color: var(--text-muted); }
+    .user-actions { display: flex; gap: 8px; margin-top: 12px; }
+    .inactive-badge {
+        background: rgba(255, 77, 106, 0.15);
+        color: var(--error);
+        font-size: 0.7rem;
+        padding: 2px 6px;
+        border-radius: 8px;
+        margin-left: 8px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<header class="header">
+    <h1>Team Members</h1>
+    <button class="header-btn" onclick="openModal('addUserModal')">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="24" height="24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+    </button>
+</header>
+
+<main class="content">
+    <div id="usersList"><div class="loading"><div class="spinner"></div></div></div>
+</main>
+
+<!-- Add User Modal -->
+<div class="modal-overlay" id="addUserModal">
+    <div class="modal">
+        <div class="modal-handle"></div>
+        <h2 class="modal-title">Add Team Member</h2>
+        <div class="form-group">
+            <label class="form-label">Username</label>
+            <input type="text" class="form-input" id="newUsername" placeholder="e.g., jsmith">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" class="form-input" id="newPassword" placeholder="Min 6 characters">
+        </div>
+        <div class="form-group">
+            <label class="form-label">First Name</label>
+            <input type="text" class="form-input" id="newFirstName">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Last Name</label>
+            <input type="text" class="form-input" id="newLastName">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Email</label>
+            <input type="email" class="form-input" id="newEmail">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Role</label>
+            <select class="form-select" id="newRole">
+                <option value="user">User</option>
+                <option value="admin">Admin</option>
+            </select>
+        </div>
+        <div class="flex gap-2 mt-4">
+            <button class="btn btn-secondary" onclick="closeModal('addUserModal')" style="flex: 1;">Cancel</button>
+            <button class="btn" onclick="addUser()" style="flex: 1;">Add User</button>
+        </div>
+    </div>
+</div>
+
+<!-- Edit User Modal -->
+<div class="modal-overlay" id="editUserModal">
+    <div class="modal">
+        <div class="modal-handle"></div>
+        <h2 class="modal-title">Edit Team Member</h2>
+        <input type="hidden" id="editUserId">
+        <div class="form-group">
+            <label class="form-label">First Name</label>
+            <input type="text" class="form-input" id="editFirstName">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Last Name</label>
+            <input type="text" class="form-input" id="editLastName">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Email</label>
+            <input type="email" class="form-input" id="editEmail">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Role</label>
+            <select class="form-select" id="editRole">
+                <option value="user">User</option>
+                <option value="admin">Admin</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">New Password (leave blank to keep)</label>
+            <input type="password" class="form-input" id="editPassword">
+        </div>
+        <div class="form-group">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="editActive" style="width: 18px; height: 18px;">
+                <span>Account Active</span>
+            </label>
+        </div>
+        <div class="flex gap-2 mt-4">
+            <button class="btn btn-secondary" onclick="closeModal('editUserModal')" style="flex: 1;">Cancel</button>
+            <button class="btn" onclick="saveUser()" style="flex: 1;">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- Reassign Modal -->
+<div class="modal-overlay" id="reassignModal">
+    <div class="modal">
+        <div class="modal-handle"></div>
+        <h2 class="modal-title">Reassign Contacts</h2>
+        <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 16px;">Move all contacts from one team member to another.</p>
+        <input type="hidden" id="reassignFromId">
+        <div class="form-group">
+            <label class="form-label">From</label>
+            <div id="reassignFromName" style="padding: 10px; background: var(--bg-hover); border-radius: 8px;"></div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">To</label>
+            <select class="form-select" id="reassignToId"></select>
+        </div>
+        <div class="flex gap-2 mt-4">
+            <button class="btn btn-secondary" onclick="closeModal('reassignModal')" style="flex: 1;">Cancel</button>
+            <button class="btn" onclick="reassignContacts()" style="flex: 1;">Reassign</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let users = [];
+
+async function loadUsers() {
+    try {
+        const res = await fetch('/api/admin/users');
+        users = await res.json();
+        renderUsers();
+    } catch (err) {
+        document.getElementById('usersList').innerHTML = '<div class="empty-state"><h3>Failed to load</h3></div>';
+    }
+}
+
+function renderUsers() {
+    const container = document.getElementById('usersList');
+    
+    if (users.length === 0) {
+        container.innerHTML = '<div class="empty-state"><h3>No team members</h3><p>Add your first team member</p></div>';
+        return;
+    }
+    
+    container.innerHTML = users.map(u => `
+        <div class="user-card">
+            <div class="user-header">
+                <div>
+                    <span class="user-name">${escapeHtml(u.full_name || u.username)}</span>
+                    ${!u.is_active ? '<span class="inactive-badge">Inactive</span>' : ''}
+                </div>
+                <span class="user-role ${u.role}">${u.role === 'admin' ? '👑 Admin' : 'User'}</span>
+            </div>
+            <div class="user-meta">@${escapeHtml(u.username)} ${u.email ? '• ' + escapeHtml(u.email) : ''}</div>
+            <div class="user-stats">
+                <div><span class="user-stat-label">Contacts:</span> ${u.contact_count}</div>
+                <div><span class="user-stat-label">Last login:</span> ${u.last_login ? formatDate(u.last_login) : 'Never'}</div>
+            </div>
+            <div class="user-actions">
+                <button class="btn btn-sm btn-secondary" onclick="editUser(${u.id})">Edit</button>
+                ${u.contact_count > 0 ? `<button class="btn btn-sm btn-secondary" onclick="openReassign(${u.id}, '${escapeHtml(u.full_name || u.username)}')">Reassign</button>` : ''}
+                ${u.contact_count === 0 ? `<button class="btn btn-sm btn-secondary" onclick="deleteUser(${u.id})" style="color: var(--error);">Delete</button>` : ''}
+            </div>
+        </div>
+    `).join('');
+}
+
+async function addUser() {
+    const username = document.getElementById('newUsername').value.trim();
+    const password = document.getElementById('newPassword').value;
+    const firstName = document.getElementById('newFirstName').value.trim();
+    const lastName = document.getElementById('newLastName').value.trim();
+    const email = document.getElementById('newEmail').value.trim();
+    const role = document.getElementById('newRole').value;
+    
+    if (!username || !password) { showToast('Username and password required', 'error'); return; }
+    if (password.length < 6) { showToast('Password must be at least 6 characters', 'error'); return; }
+    
+    try {
+        const res = await fetch('/api/admin/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password, first_name: firstName, last_name: lastName, email, role })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            showToast('User added!');
+            closeModal('addUserModal');
+            ['newUsername','newPassword','newFirstName','newLastName','newEmail'].forEach(id => document.getElementById(id).value = '');
+            loadUsers();
+        } else {
+            showToast(data.error || 'Failed', 'error');
+        }
+    } catch (err) { showToast('Failed to add user', 'error'); }
+}
+
+function editUser(id) {
+    const user = users.find(u => u.id === id);
+    if (!user) return;
+    document.getElementById('editUserId').value = id;
+    document.getElementById('editFirstName').value = user.first_name || '';
+    document.getElementById('editLastName').value = user.last_name || '';
+    document.getElementById('editEmail').value = user.email || '';
+    document.getElementById('editRole').value = user.role;
+    document.getElementById('editPassword').value = '';
+    document.getElementById('editActive').checked = user.is_active;
+    openModal('editUserModal');
+}
+
+async function saveUser() {
+    const id = document.getElementById('editUserId').value;
+    const data = {
+        first_name: document.getElementById('editFirstName').value.trim(),
+        last_name: document.getElementById('editLastName').value.trim(),
+        email: document.getElementById('editEmail').value.trim(),
+        role: document.getElementById('editRole').value,
+        is_active: document.getElementById('editActive').checked
+    };
+    const password = document.getElementById('editPassword').value;
+    if (password) data.password = password;
+    
+    try {
+        const res = await fetch(`/api/admin/users/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        if (res.ok) { showToast('Updated!'); closeModal('editUserModal'); loadUsers(); }
+        else { showToast('Failed', 'error'); }
+    } catch (err) { showToast('Failed', 'error'); }
+}
+
+async function deleteUser(id) {
+    if (!confirm('Delete this user?')) return;
+    try {
+        const res = await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (res.ok) { showToast('Deleted'); loadUsers(); }
+        else { showToast(data.error || 'Failed', 'error'); }
+    } catch (err) { showToast('Failed', 'error'); }
+}
+
+function openReassign(fromId, fromName) {
+    document.getElementById('reassignFromId').value = fromId;
+    document.getElementById('reassignFromName').textContent = fromName;
+    const select = document.getElementById('reassignToId');
+    select.innerHTML = users.filter(u => u.id !== fromId && u.is_active)
+        .map(u => `<option value="${u.id}">${escapeHtml(u.full_name || u.username)}</option>`).join('');
+    openModal('reassignModal');
+}
+
+async function reassignContacts() {
+    const fromId = document.getElementById('reassignFromId').value;
+    const toId = document.getElementById('reassignToId').value;
+    if (!toId) { showToast('Select a user', 'error'); return; }
+    
+    try {
+        const res = await fetch('/api/admin/reassign-contacts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ from_user_id: parseInt(fromId), to_user_id: parseInt(toId) })
+        });
+        const data = await res.json();
+        if (res.ok) { showToast(`Reassigned ${data.reassigned} contacts!`); closeModal('reassignModal'); loadUsers(); }
+        else { showToast(data.error || 'Failed', 'error'); }
+    } catch (err) { showToast('Failed', 'error'); }
+}
+
+function formatDate(dateStr) { return new Date(dateStr).toLocaleDateString(); }
+function escapeHtml(str) { return str ? str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : ''; }
+
+loadUsers();
+</script>
+{% endblock %}

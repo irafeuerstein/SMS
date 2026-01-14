@@ -48,7 +48,7 @@ SMTP_PORT = int(os.environ.get('SMTP_PORT', 587))
 SMTP_USER = os.environ.get('SMTP_USER')
 SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD')
 
-# App auth
+# App auth (fallback for initial admin)
 APP_USERNAME = os.environ.get('APP_USERNAME', 'admin')
 APP_PASSWORD = os.environ.get('APP_PASSWORD', 'changeme')
 
@@ -70,12 +70,50 @@ partner_tags = db.Table('partner_tags',
 )
 
 # Models
+class Tenant(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    twilio_number = db.Column(db.String(20))  # For future multi-tenant
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    users = db.relationship('User', backref='tenant', lazy=True)
+
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    username = db.Column(db.String(50), nullable=False, unique=True)
+    password_hash = db.Column(db.String(200), nullable=False)
+    role = db.Column(db.String(20), default='user')  # 'admin' or 'user'
+    first_name = db.Column(db.String(50))
+    last_name = db.Column(db.String(50))
+    email = db.Column(db.String(120))
+    personal_style = db.Column(db.Text)  # Their writing tone
+    calendar_link = db.Column(db.String(500))
+    onboarding_step = db.Column(db.Integer, default=0)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_login = db.Column(db.DateTime)
+    
+    partners = db.relationship('Partner', backref='owner', lazy=True)
+    
+    @property
+    def full_name(self):
+        if self.first_name:
+            return f"{self.first_name} {self.last_name or ''}".strip()
+        return self.username
+    
+    @property
+    def is_admin(self):
+        return self.role == 'admin'
+
 class Partner(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)  # Owner
     first_name = db.Column(db.String(50), nullable=False)
     last_name = db.Column(db.String(50))
     company = db.Column(db.String(100))
-    phone = db.Column(db.String(20), nullable=False, unique=True)
+    phone = db.Column(db.String(20), nullable=False)
     region_id = db.Column(db.Integer, db.ForeignKey('region.id'))
     tsd_id = db.Column(db.Integer, db.ForeignKey('tsd.id'))
     notes = db.Column(db.Text)
@@ -91,6 +129,9 @@ class Partner(db.Model):
     tags = db.relationship('Tag', secondary=partner_tags, backref='partners')
     messages = db.relationship('Message', backref='partner', lazy=True)
     
+    # Unique phone per tenant (not globally)
+    __table_args__ = (db.UniqueConstraint('tenant_id', 'phone', name='unique_phone_per_tenant'),)
+    
     @property
     def full_name(self):
         if self.last_name:
@@ -103,55 +144,68 @@ class Partner(db.Model):
 
 class Tag(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50), nullable=False, unique=True)
-    color = db.Column(db.String(20), default='accent')  # accent, warning, error, etc.
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    name = db.Column(db.String(50), nullable=False)
+    color = db.Column(db.String(20), default='accent')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    __table_args__ = (db.UniqueConstraint('tenant_id', 'name', name='unique_tag_per_tenant'),)
 
 class Region(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50), nullable=False, unique=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    name = db.Column(db.String(50), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    __table_args__ = (db.UniqueConstraint('tenant_id', 'name', name='unique_region_per_tenant'),)
 
 class TSD(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False, unique=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    __table_args__ = (db.UniqueConstraint('tenant_id', 'name', name='unique_tsd_per_tenant'),)
 
 class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False, unique=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    __table_args__ = (db.UniqueConstraint('tenant_id', 'name', name='unique_product_per_tenant'),)
 
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     partner_id = db.Column(db.Integer, db.ForeignKey('partner.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))  # Who sent/owns
     direction = db.Column(db.String(10))  # 'inbound' or 'outbound'
     body = db.Column(db.Text)
-    media_url = db.Column(db.String(500))  # For MMS
-    media_type = db.Column(db.String(50))  # image, video, audio
+    media_url = db.Column(db.String(500))
+    media_type = db.Column(db.String(50))
     status = db.Column(db.String(20))
     twilio_sid = db.Column(db.String(50))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class MessageTemplate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
     name = db.Column(db.String(100), nullable=False)
     body = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class ScheduledMessage(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))  # Who scheduled it
     message_template = db.Column(db.Text, nullable=False)
-    partner_ids = db.Column(db.Text, nullable=False)  # JSON array
+    partner_ids = db.Column(db.Text, nullable=False)
     media_url = db.Column(db.String(500))
     media_type = db.Column(db.String(50))
     scheduled_time = db.Column(db.DateTime, nullable=False)
-    status = db.Column(db.String(20), default='pending')  # pending, sent, cancelled
+    status = db.Column(db.String(20), default='pending')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class AIKnowledge(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    category = db.Column(db.String(50), nullable=False)  # products, objections, faq, tone, general
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    category = db.Column(db.String(50), nullable=False)
     title = db.Column(db.String(200), nullable=False)
     content = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -159,32 +213,51 @@ class AIKnowledge(db.Model):
 
 class AISettings(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    setting_key = db.Column(db.String(50), nullable=False, unique=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    setting_key = db.Column(db.String(50), nullable=False)
     setting_value = db.Column(db.Text)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    __table_args__ = (db.UniqueConstraint('tenant_id', 'setting_key', name='unique_setting_per_tenant'),)
 
-class UserSettings(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    onboarding_step = db.Column(db.Integer, default=0)  # 0=not started, 6=complete
-    calendar_link = db.Column(db.String(500))
-    custom_password = db.Column(db.String(200))  # If set, overrides env var
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+# Helper functions
+def get_current_user():
+    """Get current logged-in user"""
+    user_id = session.get('user_id')
+    if user_id:
+        return User.query.get(user_id)
+    return None
 
-def get_user_settings():
-    """Get or create user settings"""
-    settings = UserSettings.query.first()
-    if not settings:
-        settings = UserSettings()
-        db.session.add(settings)
-        db.session.commit()
-    return settings
+def get_current_tenant():
+    """Get current user's tenant"""
+    user = get_current_user()
+    if user:
+        return user.tenant
+    return None
 
 # Auth decorator
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not session.get('logged_in'):
+        if not session.get('user_id'):
             return redirect(url_for('login'))
+        user = get_current_user()
+        if not user or not user.is_active:
+            session.clear()
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('user_id'):
+            return redirect(url_for('login'))
+        user = get_current_user()
+        if not user or not user.is_active:
+            session.clear()
+            return redirect(url_for('login'))
+        if not user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
         return f(*args, **kwargs)
     return decorated_function
 
@@ -292,65 +365,111 @@ def login():
         username = request.form['username']
         password = request.form['password']
         
-        # Check custom password first, then fall back to env var
-        user_settings = UserSettings.query.first()
-        valid_password = APP_PASSWORD
-        if user_settings and user_settings.custom_password:
-            valid_password = user_settings.custom_password
+        # Look up user in database
+        user = User.query.filter_by(username=username, is_active=True).first()
         
-        if username == APP_USERNAME and password == valid_password:
-            session['logged_in'] = True
+        if user and user.password_hash == password:  # Simple password check (consider hashing later)
+            session['user_id'] = user.id
+            session['tenant_id'] = user.tenant_id
+            user.last_login = datetime.utcnow()
+            db.session.commit()
             
             # Check if onboarding needed
-            settings = get_user_settings()
-            if settings.onboarding_step < 6:
+            if user.onboarding_step < 6:
                 return redirect(url_for('onboarding'))
             
             return redirect(url_for('index'))
+        
+        # Fallback: check env vars for initial admin setup
+        if username == APP_USERNAME and password == APP_PASSWORD:
+            # Create default tenant and admin if not exists
+            tenant = Tenant.query.first()
+            if not tenant:
+                tenant = Tenant(name='Default')
+                db.session.add(tenant)
+                db.session.commit()
+            
+            user = User.query.filter_by(username=APP_USERNAME).first()
+            if not user:
+                user = User(
+                    tenant_id=tenant.id,
+                    username=APP_USERNAME,
+                    password_hash=APP_PASSWORD,
+                    role='admin',
+                    first_name='Admin'
+                )
+                db.session.add(user)
+                db.session.commit()
+            
+            session['user_id'] = user.id
+            session['tenant_id'] = user.tenant_id
+            user.last_login = datetime.utcnow()
+            db.session.commit()
+            
+            if user.onboarding_step < 6:
+                return redirect(url_for('onboarding'))
+            return redirect(url_for('index'))
+        
         return render_template('login.html', error='Invalid credentials')
     return render_template('login.html')
 
 @app.route('/logout')
 def logout():
-    session.pop('logged_in', None)
+    session.clear()
     return redirect(url_for('login'))
 
 @app.route('/onboarding')
 @login_required
 def onboarding():
-    settings = get_user_settings()
-    return render_template('onboarding.html', current_step=settings.onboarding_step)
+    user = get_current_user()
+    return render_template('onboarding.html', current_step=user.onboarding_step)
 
 @app.route('/')
 @login_required
 def index():
-    settings = get_user_settings()
-    return render_template('index.html', onboarding_complete=(settings.onboarding_step >= 6), onboarding_step=settings.onboarding_step)
+    user = get_current_user()
+    return render_template('index.html', 
+                         onboarding_complete=(user.onboarding_step >= 6), 
+                         onboarding_step=user.onboarding_step,
+                         current_user=user)
 
 @app.route('/partners')
 @login_required
 def partners():
-    return render_template('partners.html')
+    user = get_current_user()
+    return render_template('partners.html', current_user=user)
 
 @app.route('/inbox')
 @login_required
 def inbox():
-    return render_template('inbox.html')
+    user = get_current_user()
+    return render_template('inbox.html', current_user=user)
 
 @app.route('/broadcast')
 @login_required
 def broadcast():
-    return render_template('broadcast.html')
+    user = get_current_user()
+    return render_template('broadcast.html', current_user=user)
 
 @app.route('/settings')
 @login_required
 def settings():
-    return render_template('settings.html')
+    user = get_current_user()
+    return render_template('settings.html', current_user=user)
+
+@app.route('/admin/users')
+@admin_required
+def admin_users():
+    user = get_current_user()
+    return render_template('admin_users.html', current_user=user)
 
 # API: Partners
 @app.route('/api/partners', methods=['GET', 'POST'])
 @login_required
 def api_partners():
+    user = get_current_user()
+    tenant = get_current_tenant()
+    
     if request.method == 'POST':
         data = request.json
         
@@ -359,12 +478,14 @@ def api_partners():
         if not phone.startswith('+'):
             phone = '+1' + phone.replace('-', '').replace(' ', '').replace('(', '').replace(')', '')
         
-        # Check duplicate
-        existing = Partner.query.filter_by(phone=phone).first()
+        # Check duplicate within tenant
+        existing = Partner.query.filter_by(tenant_id=tenant.id, phone=phone).first()
         if existing:
             return jsonify({'error': 'Phone number already exists'}), 400
         
         partner = Partner(
+            tenant_id=tenant.id,
+            user_id=user.id,  # Assign to current user
             first_name=data['first_name'],
             last_name=data.get('last_name'),
             company=data.get('company'),
@@ -375,11 +496,11 @@ def api_partners():
         )
         
         if data.get('product_ids'):
-            products = Product.query.filter(Product.id.in_(data['product_ids'])).all()
+            products = Product.query.filter(Product.id.in_(data['product_ids']), Product.tenant_id==tenant.id).all()
             partner.products = products
         
         if data.get('tag_ids'):
-            tags = Tag.query.filter(Tag.id.in_(data['tag_ids'])).all()
+            tags = Tag.query.filter(Tag.id.in_(data['tag_ids']), Tag.tenant_id==tenant.id).all()
             partner.tags = tags
         
         db.session.add(partner)
@@ -387,7 +508,11 @@ def api_partners():
         return jsonify({'success': True, 'id': partner.id})
     
     # GET with filtering and search
-    query = Partner.query
+    # Users see only their own contacts, admins can see all
+    if user.is_admin and request.args.get('all') == 'true':
+        query = Partner.query.filter_by(tenant_id=tenant.id)
+    else:
+        query = Partner.query.filter_by(user_id=user.id)
     
     # Search
     search = request.args.get('search', '').strip()
@@ -451,7 +576,15 @@ def api_partners():
 @app.route('/api/partners/<int:id>', methods=['GET', 'PUT', 'DELETE'])
 @login_required
 def api_partner(id):
+    user = get_current_user()
+    tenant = get_current_tenant()
     partner = Partner.query.get_or_404(id)
+    
+    # Check ownership (admins can access all in tenant)
+    if partner.tenant_id != tenant.id:
+        return jsonify({'error': 'Not found'}), 404
+    if not user.is_admin and partner.user_id != user.id:
+        return jsonify({'error': 'Access denied'}), 403
     
     if request.method == 'DELETE':
         # Delete associated messages first
@@ -470,12 +603,16 @@ def api_partner(id):
         partner.tsd_id = data.get('tsd_id') or None
         partner.notes = data.get('notes', partner.notes)
         
+        # Admin can reassign ownership
+        if user.is_admin and 'user_id' in data:
+            partner.user_id = data['user_id']
+        
         if 'product_ids' in data:
-            products = Product.query.filter(Product.id.in_(data['product_ids'])).all()
+            products = Product.query.filter(Product.id.in_(data['product_ids']), Product.tenant_id==tenant.id).all()
             partner.products = products
         
         if 'tag_ids' in data:
-            tags = Tag.query.filter(Tag.id.in_(data['tag_ids'])).all()
+            tags = Tag.query.filter(Tag.id.in_(data['tag_ids']), Tag.tenant_id==tenant.id).all()
             partner.tags = tags
         
         db.session.commit()
@@ -504,6 +641,9 @@ def api_partner(id):
 @app.route('/api/partners/import', methods=['POST'])
 @login_required
 def api_import_partners():
+    user = get_current_user()
+    tenant = get_current_tenant()
+    
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
     
@@ -530,8 +670,8 @@ def api_import_partners():
                 if not phone.startswith('+'):
                     phone = '+1' + phone.replace('-', '').replace(' ', '').replace('(', '').replace(')', '')
                 
-                # Check if exists
-                if Partner.query.filter_by(phone=phone).first():
+                # Check if exists in tenant
+                if Partner.query.filter_by(tenant_id=tenant.id, phone=phone).first():
                     skipped += 1
                     continue
                 
@@ -545,6 +685,8 @@ def api_import_partners():
                     continue
                 
                 partner = Partner(
+                    tenant_id=tenant.id,
+                    user_id=user.id,
                     first_name=first_name,
                     last_name=last_name or None,
                     company=company or None,
@@ -571,7 +713,13 @@ def api_import_partners():
 @app.route('/api/partners/export')
 @login_required
 def api_export_partners():
-    partners = Partner.query.order_by(Partner.company).all()
+    user = get_current_user()
+    
+    # Users export only their own, admins can export all
+    if user.is_admin:
+        partners = Partner.query.filter_by(tenant_id=user.tenant_id).order_by(Partner.company).all()
+    else:
+        partners = Partner.query.filter_by(user_id=user.id).order_by(Partner.company).all()
     
     output = io.StringIO()
     writer = csv.writer(output)
@@ -601,14 +749,16 @@ def api_export_partners():
 @app.route('/api/regions', methods=['GET', 'POST'])
 @login_required
 def api_regions():
+    tenant = get_current_tenant()
+    
     if request.method == 'POST':
         data = request.json
-        region = Region(name=data['name'])
+        region = Region(tenant_id=tenant.id, name=data['name'])
         db.session.add(region)
         db.session.commit()
         return jsonify({'success': True, 'id': region.id})
     
-    regions = Region.query.order_by(Region.name).all()
+    regions = Region.query.filter_by(tenant_id=tenant.id).order_by(Region.name).all()
     return jsonify([{'id': r.id, 'name': r.name} for r in regions])
 
 @app.route('/api/regions/<int:id>', methods=['PUT', 'DELETE'])
@@ -631,20 +781,23 @@ def api_region(id):
 @app.route('/api/tsds', methods=['GET', 'POST'])
 @login_required
 def api_tsds():
+    tenant = get_current_tenant()
+    
     if request.method == 'POST':
         data = request.json
-        tsd = TSD(name=data['name'])
+        tsd = TSD(tenant_id=tenant.id, name=data['name'])
         db.session.add(tsd)
         db.session.commit()
         return jsonify({'success': True, 'id': tsd.id})
     
-    tsds = TSD.query.order_by(TSD.name).all()
+    tsds = TSD.query.filter_by(tenant_id=tenant.id).order_by(TSD.name).all()
     return jsonify([{'id': t.id, 'name': t.name} for t in tsds])
 
 @app.route('/api/tsds/<int:id>', methods=['PUT', 'DELETE'])
 @login_required
 def api_tsd(id):
-    tsd = TSD.query.get_or_404(id)
+    tenant = get_current_tenant()
+    tsd = TSD.query.filter_by(id=id, tenant_id=tenant.id).first_or_404()
     
     if request.method == 'DELETE':
         db.session.delete(tsd)
@@ -661,20 +814,23 @@ def api_tsd(id):
 @app.route('/api/products', methods=['GET', 'POST'])
 @login_required
 def api_products():
+    tenant = get_current_tenant()
+    
     if request.method == 'POST':
         data = request.json
-        product = Product(name=data['name'])
+        product = Product(tenant_id=tenant.id, name=data['name'])
         db.session.add(product)
         db.session.commit()
         return jsonify({'success': True, 'id': product.id})
     
-    products = Product.query.order_by(Product.name).all()
+    products = Product.query.filter_by(tenant_id=tenant.id).order_by(Product.name).all()
     return jsonify([{'id': p.id, 'name': p.name} for p in products])
 
 @app.route('/api/products/<int:id>', methods=['PUT', 'DELETE'])
 @login_required
 def api_product(id):
-    product = Product.query.get_or_404(id)
+    tenant = get_current_tenant()
+    product = Product.query.filter_by(id=id, tenant_id=tenant.id).first_or_404()
     
     if request.method == 'DELETE':
         db.session.delete(product)
@@ -692,20 +848,23 @@ def api_product(id):
 @app.route('/api/tags', methods=['GET', 'POST'])
 @login_required
 def api_tags():
+    tenant = get_current_tenant()
+    
     if request.method == 'POST':
         data = request.json
-        tag = Tag(name=data['name'], color=data.get('color', 'accent'))
+        tag = Tag(tenant_id=tenant.id, name=data['name'], color=data.get('color', 'accent'))
         db.session.add(tag)
         db.session.commit()
         return jsonify({'success': True, 'id': tag.id})
     
-    tags = Tag.query.order_by(Tag.name).all()
+    tags = Tag.query.filter_by(tenant_id=tenant.id).order_by(Tag.name).all()
     return jsonify([{'id': t.id, 'name': t.name, 'color': t.color} for t in tags])
 
 @app.route('/api/tags/<int:id>', methods=['PUT', 'DELETE'])
 @login_required
 def api_tag(id):
-    tag = Tag.query.get_or_404(id)
+    tenant = get_current_tenant()
+    tag = Tag.query.filter_by(id=id, tenant_id=tenant.id).first_or_404()
     
     if request.method == 'DELETE':
         db.session.delete(tag)
@@ -724,12 +883,22 @@ def api_tag(id):
 @app.route('/api/messages/search')
 @login_required
 def api_message_search():
+    user = get_current_user()
     query = request.args.get('q', '').strip()
     if not query or len(query) < 2:
         return jsonify([])
     
+    # Get user's partners
+    if user.is_admin:
+        partner_ids = [p.id for p in Partner.query.filter_by(tenant_id=user.tenant_id).all()]
+    else:
+        partner_ids = [p.id for p in Partner.query.filter_by(user_id=user.id).all()]
+    
     search_term = f"%{query}%"
-    messages = Message.query.filter(Message.body.ilike(search_term)).order_by(Message.created_at.desc()).limit(50).all()
+    messages = Message.query.filter(
+        Message.body.ilike(search_term),
+        Message.partner_id.in_(partner_ids)
+    ).order_by(Message.created_at.desc()).limit(50).all()
     
     results = []
     for m in messages:
@@ -751,9 +920,13 @@ def get_ai_client():
         return anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     return None
 
-# AI: Get all knowledge for context
-def get_ai_knowledge_context():
-    knowledge_items = AIKnowledge.query.all()
+# AI: Get all knowledge for context (tenant-aware)
+def get_ai_knowledge_context(tenant_id=None, user=None):
+    if tenant_id:
+        knowledge_items = AIKnowledge.query.filter_by(tenant_id=tenant_id).all()
+    else:
+        knowledge_items = AIKnowledge.query.all()
+    
     if not knowledge_items:
         return ""
     
@@ -1543,13 +1716,23 @@ Return ONLY valid JSON array, no other text."""
         added = 0
         for item in knowledge_items:
             if item.get('title') and item.get('content'):
-                knowledge = AIKnowledge(
-                    category=item.get('category', 'general'),
-                    title=item['title'][:200],
-                    content=item['content']
-                )
-                db.session.add(knowledge)
-                added += 1
+                # Check for duplicate by title (case-insensitive)
+                existing = AIKnowledge.query.filter(
+                    db.func.lower(AIKnowledge.title) == item['title'][:200].lower(),
+                    AIKnowledge.category == item.get('category', 'general')
+                ).first()
+                
+                if existing:
+                    # Update existing instead of creating duplicate
+                    existing.content = item['content']
+                else:
+                    knowledge = AIKnowledge(
+                        category=item.get('category', 'general'),
+                        title=item['title'][:200],
+                        content=item['content']
+                    )
+                    db.session.add(knowledge)
+                    added += 1
         
         db.session.commit()
         
@@ -2045,41 +2228,80 @@ def send_scheduled_messages():
             scheduled.status = 'sent'
             db.session.commit()
 
-# Initialize database with default products
+# Initialize database with default tenant and products
 def init_db():
     with app.app_context():
         db.create_all()
+        
+        # Create default tenant if none exists
+        tenant = Tenant.query.first()
+        if not tenant:
+            tenant = Tenant(name='Default')
+            db.session.add(tenant)
+            db.session.commit()
+        
+        # Create default admin user if none exists
+        if User.query.count() == 0:
+            admin = User(
+                tenant_id=tenant.id,
+                username=APP_USERNAME,
+                password_hash=APP_PASSWORD,
+                role='admin',
+                first_name='Admin',
+                onboarding_step=0
+            )
+            db.session.add(admin)
+            db.session.commit()
         
         # Add default products if none exist
         if Product.query.count() == 0:
             default_products = ['MxDR', 'Email Protection', 'Compliance']
             for name in default_products:
-                db.session.add(Product(name=name))
+                db.session.add(Product(tenant_id=tenant.id, name=name))
+            db.session.commit()
+        
+        # Migration: Add tenant_id and user_id to existing records
+        admin = User.query.filter_by(role='admin').first()
+        if admin:
+            # Update partners without tenant_id
+            Partner.query.filter(Partner.tenant_id.is_(None)).update({'tenant_id': tenant.id, 'user_id': admin.id})
+            # Update other models without tenant_id
+            Region.query.filter(Region.tenant_id.is_(None)).update({'tenant_id': tenant.id})
+            TSD.query.filter(TSD.tenant_id.is_(None)).update({'tenant_id': tenant.id})
+            Product.query.filter(Product.tenant_id.is_(None)).update({'tenant_id': tenant.id})
+            Tag.query.filter(Tag.tenant_id.is_(None)).update({'tenant_id': tenant.id})
+            AIKnowledge.query.filter(AIKnowledge.tenant_id.is_(None)).update({'tenant_id': tenant.id})
+            MessageTemplate.query.filter(MessageTemplate.tenant_id.is_(None)).update({'tenant_id': tenant.id})
+            ScheduledMessage.query.filter(ScheduledMessage.tenant_id.is_(None)).update({'tenant_id': tenant.id})
             db.session.commit()
 
 # API: User Settings (onboarding, calendar, password)
 @app.route('/api/user/settings', methods=['GET', 'PUT'])
 @login_required
 def api_user_settings():
-    settings = get_user_settings()
+    user = get_current_user()
     
     if request.method == 'PUT':
         data = request.json
         if 'onboarding_step' in data:
-            settings.onboarding_step = data['onboarding_step']
+            user.onboarding_step = data['onboarding_step']
         if 'calendar_link' in data:
-            settings.calendar_link = data['calendar_link']
+            user.calendar_link = data['calendar_link']
+        if 'personal_style' in data:
+            user.personal_style = data['personal_style']
         db.session.commit()
         return jsonify({'success': True})
     
     return jsonify({
-        'onboarding_step': settings.onboarding_step,
-        'calendar_link': settings.calendar_link or ''
+        'onboarding_step': user.onboarding_step,
+        'calendar_link': user.calendar_link or '',
+        'personal_style': user.personal_style or ''
     })
 
 @app.route('/api/user/change-password', methods=['POST'])
 @login_required
 def api_change_password():
+    user = get_current_user()
     data = request.json
     current_password = data.get('current_password', '')
     new_password = data.get('new_password', '')
@@ -2088,14 +2310,11 @@ def api_change_password():
         return jsonify({'success': False, 'error': 'Password must be at least 6 characters'}), 400
     
     # Check current password
-    settings = get_user_settings()
-    valid_password = settings.custom_password if settings.custom_password else APP_PASSWORD
-    
-    if current_password != valid_password:
+    if current_password != user.password_hash:
         return jsonify({'success': False, 'error': 'Current password is incorrect'}), 400
     
     # Set new password
-    settings.custom_password = new_password
+    user.password_hash = new_password
     db.session.commit()
     
     return jsonify({'success': True})
@@ -2103,67 +2322,193 @@ def api_change_password():
 @app.route('/api/user/onboarding-status')
 @login_required
 def api_onboarding_status():
-    settings = get_user_settings()
-    knowledge_count = AIKnowledge.query.count()
-    partner_count = Partner.query.count()
-    
-    # Calculate completion based on what's actually done
-    steps_complete = {
-        '1': knowledge_count > 0,
-        '2': knowledge_count >= 3,
-        '3': AIKnowledge.query.filter_by(category='objections').count() > 0,
-        '4': AIKnowledge.query.filter_by(category='tone').count() > 0,
-        '5': partner_count > 0,
-        '6': settings.calendar_link is not None and settings.calendar_link != ''
-    }
+    user = get_current_user()
+    tenant = get_current_tenant()
+    knowledge_count = AIKnowledge.query.filter_by(tenant_id=tenant.id).count()
+    partner_count = Partner.query.filter_by(user_id=user.id).count()
     
     return jsonify({
-        'current_step': settings.onboarding_step,
-        'steps_complete': steps_complete,
+        'current_step': user.onboarding_step,
         'knowledge_count': knowledge_count,
         'partner_count': partner_count,
-        'calendar_link': settings.calendar_link or ''
+        'calendar_link': user.calendar_link or ''
     })
 
 @app.route('/api/user/onboarding-step', methods=['POST'])
 @login_required
 def api_update_onboarding_step():
+    user = get_current_user()
     data = request.json
     step = data.get('step', 0)
     
-    settings = get_user_settings()
-    settings.onboarding_step = max(settings.onboarding_step, step)  # Only go forward
+    user.onboarding_step = max(user.onboarding_step, step)
     db.session.commit()
     
-    return jsonify({'success': True, 'step': settings.onboarding_step})
+    return jsonify({'success': True, 'step': user.onboarding_step})
 
 @app.route('/api/user/calendar-link', methods=['GET', 'POST'])
 @login_required
 def api_calendar_link():
-    settings = get_user_settings()
+    user = get_current_user()
+    tenant = get_current_tenant()
     
     if request.method == 'POST':
         data = request.json
-        settings.calendar_link = data.get('calendar_link', '').strip()
+        user.calendar_link = data.get('calendar_link', '').strip()
         db.session.commit()
         
         # Also save to AI knowledge so AI knows about it
-        existing = AIKnowledge.query.filter_by(category='general', title='Calendar Link').first()
-        if settings.calendar_link:
+        existing = AIKnowledge.query.filter_by(tenant_id=tenant.id, category='general', title=f'Calendar Link - {user.username}').first()
+        if user.calendar_link:
             if existing:
-                existing.content = f"When scheduling meetings, use this calendar link: {settings.calendar_link}"
+                existing.content = f"When {user.full_name} schedules meetings, use this calendar link: {user.calendar_link}"
             else:
                 knowledge = AIKnowledge(
+                    tenant_id=tenant.id,
                     category='general',
-                    title='Calendar Link',
-                    content=f"When scheduling meetings, use this calendar link: {settings.calendar_link}"
+                    title=f'Calendar Link - {user.username}',
+                    content=f"When {user.full_name} schedules meetings, use this calendar link: {user.calendar_link}"
                 )
                 db.session.add(knowledge)
             db.session.commit()
         
         return jsonify({'success': True})
     
-    return jsonify({'calendar_link': settings.calendar_link or ''})
+    return jsonify({'calendar_link': user.calendar_link or ''})
+
+@app.route('/api/user/skip-onboarding', methods=['POST'])
+@login_required
+def api_skip_onboarding():
+    user = get_current_user()
+    user.onboarding_step = 6
+    db.session.commit()
+    return jsonify({'success': True})
+
+@app.route('/api/stats/unread-count')
+@login_required
+def api_unread_count():
+    user = get_current_user()
+    
+    # Get user's partners (or all for admin)
+    if user.is_admin:
+        partners = Partner.query.filter_by(tenant_id=user.tenant_id, archived=False, opted_out=False).all()
+    else:
+        partners = Partner.query.filter_by(user_id=user.id, archived=False, opted_out=False).all()
+    
+    unread = 0
+    for partner in partners:
+        last_inbound = Message.query.filter_by(partner_id=partner.id, direction='inbound').order_by(Message.created_at.desc()).first()
+        last_outbound = Message.query.filter_by(partner_id=partner.id, direction='outbound').order_by(Message.created_at.desc()).first()
+        
+        if last_inbound:
+            if not last_outbound or last_inbound.created_at > last_outbound.created_at:
+                unread += 1
+    
+    return jsonify({'unread': unread})
+
+# API: User Management (Admin only)
+@app.route('/api/admin/users', methods=['GET', 'POST'])
+@admin_required
+def api_admin_users():
+    tenant = get_current_tenant()
+    
+    if request.method == 'POST':
+        data = request.json
+        
+        # Check username unique
+        if User.query.filter_by(username=data['username']).first():
+            return jsonify({'error': 'Username already exists'}), 400
+        
+        user = User(
+            tenant_id=tenant.id,
+            username=data['username'],
+            password_hash=data['password'],
+            role=data.get('role', 'user'),
+            first_name=data.get('first_name'),
+            last_name=data.get('last_name'),
+            email=data.get('email')
+        )
+        db.session.add(user)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'id': user.id})
+    
+    users = User.query.filter_by(tenant_id=tenant.id).order_by(User.username).all()
+    return jsonify([{
+        'id': u.id,
+        'username': u.username,
+        'first_name': u.first_name,
+        'last_name': u.last_name,
+        'full_name': u.full_name,
+        'email': u.email,
+        'role': u.role,
+        'is_active': u.is_active,
+        'last_login': u.last_login.isoformat() if u.last_login else None,
+        'contact_count': Partner.query.filter_by(user_id=u.id).count()
+    } for u in users])
+
+@app.route('/api/admin/users/<int:id>', methods=['GET', 'PUT', 'DELETE'])
+@admin_required
+def api_admin_user(id):
+    tenant = get_current_tenant()
+    user = User.query.filter_by(id=id, tenant_id=tenant.id).first_or_404()
+    
+    if request.method == 'DELETE':
+        # Don't delete if they own contacts
+        if Partner.query.filter_by(user_id=id).count() > 0:
+            return jsonify({'error': 'Cannot delete user with contacts. Reassign contacts first.'}), 400
+        db.session.delete(user)
+        db.session.commit()
+        return jsonify({'success': True})
+    
+    if request.method == 'PUT':
+        data = request.json
+        if 'first_name' in data:
+            user.first_name = data['first_name']
+        if 'last_name' in data:
+            user.last_name = data['last_name']
+        if 'email' in data:
+            user.email = data['email']
+        if 'role' in data:
+            user.role = data['role']
+        if 'is_active' in data:
+            user.is_active = data['is_active']
+        if 'password' in data and data['password']:
+            user.password_hash = data['password']
+        db.session.commit()
+        return jsonify({'success': True})
+    
+    return jsonify({
+        'id': user.id,
+        'username': user.username,
+        'first_name': user.first_name,
+        'last_name': user.last_name,
+        'email': user.email,
+        'role': user.role,
+        'is_active': user.is_active
+    })
+
+@app.route('/api/admin/reassign-contacts', methods=['POST'])
+@admin_required
+def api_reassign_contacts():
+    """Reassign contacts from one user to another"""
+    tenant = get_current_tenant()
+    data = request.json
+    from_user_id = data.get('from_user_id')
+    to_user_id = data.get('to_user_id')
+    
+    # Verify both users exist in tenant
+    from_user = User.query.filter_by(id=from_user_id, tenant_id=tenant.id).first()
+    to_user = User.query.filter_by(id=to_user_id, tenant_id=tenant.id).first()
+    
+    if not from_user or not to_user:
+        return jsonify({'error': 'Invalid user'}), 400
+    
+    # Reassign all contacts
+    count = Partner.query.filter_by(user_id=from_user_id).update({'user_id': to_user_id})
+    db.session.commit()
+    
+    return jsonify({'success': True, 'reassigned': count})
 
 # Initialize scheduler for scheduled messages
 def init_scheduler():

@@ -294,6 +294,30 @@
         </div>
     </div>
 
+    <!-- Team (Admin only) -->
+    {% if current_user and current_user.is_admin %}
+    <div class="settings-group">
+        <div class="settings-group-header" onclick="toggleSettingsGroup(this)">
+            <div class="settings-group-title">
+                <div class="icon" style="background: rgba(0, 212, 170, 0.15);">👥</div>
+                <div>
+                    <div>Team</div>
+                    <div class="settings-group-subtitle">Manage team members</div>
+                </div>
+            </div>
+            <svg class="settings-group-chevron" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+        </div>
+        <div class="settings-group-content">
+            <div style="margin-bottom: 12px;">
+                <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 12px;">Add team members, manage permissions, and reassign contacts.</div>
+                <a href="/admin/users" class="btn btn-block" style="text-decoration: none;">👥 Manage Team Members</a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Account -->
     <div class="settings-group">
         <div class="settings-group-header" onclick="toggleSettingsGroup(this)">
@@ -347,7 +371,7 @@
             <!-- Version -->
             <div style="text-align: center; padding-top: 12px; border-top: 1px solid var(--border);">
                 <div style="font-size: 0.75rem; color: var(--text-muted);">SilverSky SMS</div>
-                <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">Version 1.3.0</div>
+                <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">Version 1.4.0</div>
             </div>
         </div>
     </div>
