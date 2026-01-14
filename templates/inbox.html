@@ -129,6 +129,85 @@
         min-width: 22px;
         text-align: center;
     }
+    .ai-suggestions {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 8px;
+        padding: 8px;
+        background: var(--bg-dark);
+        border-radius: 8px;
+        border: 1px solid rgba(0, 212, 170, 0.3);
+    }
+    .ai-suggestions-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 4px;
+    }
+    .ai-suggestions-title {
+        font-size: 0.7rem;
+        color: var(--accent);
+        font-weight: 600;
+    }
+    .ai-suggestion-btn {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        color: var(--text-primary);
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-size: 0.8rem;
+        text-align: left;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .ai-suggestion-btn:hover {
+        border-color: var(--accent);
+        background: var(--bg-hover);
+    }
+    .ai-compose-bar {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+    .ai-compose-input {
+        flex: 1;
+        background: var(--bg-dark);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 12px;
+        color: var(--text-primary);
+        font-size: 0.8rem;
+    }
+    .ai-compose-input:focus {
+        outline: none;
+        border-color: var(--accent);
+    }
+    .ai-btn {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border: none;
+        color: white;
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .ai-btn:disabled {
+        opacity: 0.5;
+    }
+    .sentiment-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 0.65rem;
+        font-weight: 600;
+    }
+    .sentiment-positive { background: rgba(0, 212, 170, 0.2); color: var(--accent); }
+    .sentiment-neutral { background: rgba(255, 187, 0, 0.2); color: var(--warning); }
+    .sentiment-negative { background: rgba(255, 85, 102, 0.2); color: var(--error); }
 </style>
 {% endblock %}
 
@@ -179,6 +258,22 @@
 <div class="compose-bar hidden" id="composeBar">
     <div class="compose-bar-inner">
         <div style="flex: 1;">
+            <!-- AI Suggestions -->
+            <div class="ai-suggestions hidden" id="aiSuggestions">
+                <div class="ai-suggestions-header">
+                    <span class="ai-suggestions-title">✨ AI Suggestions</span>
+                    <button onclick="hideAiSuggestions()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;">✕</button>
+                </div>
+                <div id="aiSuggestionsList"></div>
+            </div>
+            
+            <!-- AI Compose -->
+            <div class="ai-compose-bar">
+                <input type="text" class="ai-compose-input" id="aiComposeInput" placeholder="Ask AI to write... (e.g., 'follow up about MxDR pricing')" onkeydown="if(event.key==='Enter')generateAiMessage()">
+                <button class="ai-btn" onclick="generateAiMessage()" id="aiComposeBtn">✨ Write</button>
+                <button class="ai-btn" onclick="getAiSuggestions()" id="aiSuggestBtn" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">💡 Suggest</button>
+            </div>
+            
             <!-- Quick Replies -->
             <div class="quick-replies" id="quickReplies">
                 <button class="quick-reply" onclick="insertQuickReply('Thanks!')">Thanks!</button>
@@ -880,6 +975,119 @@ document.getElementById('messageList')?.addEventListener('scroll', function() {
     const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
     document.getElementById('newMessagesBtn').style.display = isNearBottom ? 'none' : 'block';
 });
+
+// AI Functions
+async function getAiSuggestions() {
+    if (!currentPartnerId) return;
+    
+    const btn = document.getElementById('aiSuggestBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳...';
+    
+    try {
+        const res = await fetch(`/api/ai/suggestions/${currentPartnerId}`, { method: 'POST' });
+        const data = await res.json();
+        
+        if (data.error) {
+            showToast(data.error, 'error');
+            return;
+        }
+        
+        const container = document.getElementById('aiSuggestionsList');
+        container.innerHTML = data.suggestions.map(s => 
+            `<button class="ai-suggestion-btn" onclick="useAiSuggestion(this)">${escapeHtml(s)}</button>`
+        ).join('');
+        
+        document.getElementById('aiSuggestions').classList.remove('hidden');
+    } catch (err) {
+        showToast('Failed to get suggestions', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '💡 Suggest';
+    }
+}
+
+function useAiSuggestion(btn) {
+    document.getElementById('messageInput').value = btn.textContent;
+    updateCharCountInbox();
+    hideAiSuggestions();
+}
+
+function hideAiSuggestions() {
+    document.getElementById('aiSuggestions').classList.add('hidden');
+}
+
+async function generateAiMessage() {
+    const input = document.getElementById('aiComposeInput');
+    const prompt = input.value.trim();
+    
+    if (!prompt) {
+        showToast('Enter what you want to write', 'warning');
+        return;
+    }
+    
+    const btn = document.getElementById('aiComposeBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳...';
+    
+    try {
+        const res = await fetch('/api/ai/compose', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                prompt: prompt,
+                partner_id: currentPartnerId 
+            })
+        });
+        const data = await res.json();
+        
+        if (data.error) {
+            showToast(data.error, 'error');
+            return;
+        }
+        
+        document.getElementById('messageInput').value = data.message;
+        updateCharCountInbox();
+        input.value = '';
+        showToast('Message generated!');
+    } catch (err) {
+        showToast('Failed to generate message', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '✨ Write';
+    }
+}
+
+async function getAiSummary() {
+    if (!currentPartnerId) return;
+    
+    try {
+        const res = await fetch(`/api/ai/summarize/${currentPartnerId}`);
+        const data = await res.json();
+        
+        if (data.error) {
+            showToast(data.error, 'error');
+            return;
+        }
+        
+        // Show in a modal or alert
+        alert('Conversation Summary:\n\n' + data.summary);
+    } catch (err) {
+        showToast('Failed to summarize', 'error');
+    }
+}
+
+async function getAiSentiment() {
+    if (!currentPartnerId) return;
+    
+    try {
+        const res = await fetch(`/api/ai/sentiment/${currentPartnerId}`);
+        const data = await res.json();
+        return data;
+    } catch (err) {
+        return { sentiment: 'neutral', score: 50, label: 'Unknown' };
+    }
+}
 
 loadConversations();
 </script>

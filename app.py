@@ -5,6 +5,7 @@ import json
 import smtplib
 import cloudinary
 import cloudinary.uploader
+import anthropic
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 from functools import wraps
@@ -27,6 +28,9 @@ cloudinary.config(
     api_key=os.environ.get('CLOUDINARY_API_KEY'),
     api_secret=os.environ.get('CLOUDINARY_API_SECRET')
 )
+
+# Anthropic AI config
+ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
 
 # Twilio config
 TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID')
@@ -685,6 +689,211 @@ def api_message_search():
         })
     
     return jsonify(results)
+
+# AI: Get Anthropic client
+def get_ai_client():
+    if ANTHROPIC_API_KEY:
+        return anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    return None
+
+# AI: Generate reply suggestions based on conversation
+@app.route('/api/ai/suggestions/<int:partner_id>', methods=['POST'])
+@login_required
+def api_ai_suggestions(partner_id):
+    client = get_ai_client()
+    if not client:
+        return jsonify({'error': 'AI not configured. Add ANTHROPIC_API_KEY to environment.'}), 400
+    
+    partner = Partner.query.get_or_404(partner_id)
+    messages = Message.query.filter_by(partner_id=partner_id).order_by(Message.created_at.desc()).limit(10).all()
+    messages.reverse()  # Chronological order
+    
+    if not messages:
+        return jsonify({'suggestions': ['Hi! How can I help you today?', 'Thanks for reaching out!', 'Let me know if you have any questions.']})
+    
+    # Build conversation context
+    conversation = []
+    for m in messages:
+        role = 'Partner' if m.direction == 'inbound' else 'You'
+        conversation.append(f"{role}: {m.body}")
+    
+    conversation_text = '\n'.join(conversation)
+    
+    prompt = f"""You are helping a Strategic Partner Manager at SilverSky (a cybersecurity company) respond to SMS messages from channel partners.
+
+Partner info:
+- Name: {partner.full_name}
+- Company: {partner.company or 'Unknown'}
+- Region: {partner.region.name if partner.region else 'Unknown'}
+- Products interested in: {', '.join([p.name for p in partner.products]) or 'Unknown'}
+- Notes: {partner.notes or 'None'}
+
+Recent conversation:
+{conversation_text}
+
+Generate exactly 3 short, professional SMS reply suggestions (under 160 characters each) that the partner manager could send next. Make them contextually relevant to the conversation. Be helpful, friendly, and action-oriented.
+
+Return ONLY a JSON array of 3 strings, no other text. Example: ["Reply 1", "Reply 2", "Reply 3"]"""
+
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=300,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        # Parse the response
+        response_text = response.content[0].text.strip()
+        suggestions = json.loads(response_text)
+        
+        return jsonify({'suggestions': suggestions[:3]})
+    except json.JSONDecodeError:
+        # If JSON parsing fails, return defaults
+        return jsonify({'suggestions': ['Thanks for the update!', 'Let me look into that for you.', 'Can we schedule a quick call?']})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# AI: Generate message based on prompt
+@app.route('/api/ai/compose', methods=['POST'])
+@login_required
+def api_ai_compose():
+    client = get_ai_client()
+    if not client:
+        return jsonify({'error': 'AI not configured. Add ANTHROPIC_API_KEY to environment.'}), 400
+    
+    data = request.json
+    prompt_text = data.get('prompt', '')
+    partner_id = data.get('partner_id')
+    
+    if not prompt_text:
+        return jsonify({'error': 'Please provide a prompt'}), 400
+    
+    # Get partner context if provided
+    partner_context = ""
+    if partner_id:
+        partner = Partner.query.get(partner_id)
+        if partner:
+            partner_context = f"""
+Partner info:
+- Name: {partner.full_name}
+- Company: {partner.company or 'Unknown'}
+- Region: {partner.region.name if partner.region else 'Unknown'}
+- TSD: {partner.tsd.name if partner.tsd else 'Unknown'}
+- Products: {', '.join([p.name for p in partner.products]) or 'Unknown'}
+- Notes: {partner.notes or 'None'}
+"""
+    
+    prompt = f"""You are helping a Strategic Partner Manager at SilverSky (a cybersecurity company) write SMS messages to channel partners.
+
+SilverSky offers: MxDR (Managed Extended Detection and Response), Email Protection, and Compliance services.
+
+{partner_context}
+
+User request: {prompt_text}
+
+Write a professional, friendly SMS message (under 160 characters if possible, max 320 characters). Use {{{{first_name}}}} if you want to personalize with the partner's name.
+
+Return ONLY the message text, no quotes or explanation."""
+
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=200,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        message = response.content[0].text.strip()
+        # Remove quotes if present
+        if message.startswith('"') and message.endswith('"'):
+            message = message[1:-1]
+        
+        return jsonify({'message': message})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# AI: Summarize conversation
+@app.route('/api/ai/summarize/<int:partner_id>')
+@login_required
+def api_ai_summarize(partner_id):
+    client = get_ai_client()
+    if not client:
+        return jsonify({'error': 'AI not configured. Add ANTHROPIC_API_KEY to environment.'}), 400
+    
+    partner = Partner.query.get_or_404(partner_id)
+    messages = Message.query.filter_by(partner_id=partner_id).order_by(Message.created_at).all()
+    
+    if not messages:
+        return jsonify({'summary': 'No conversation history yet.'})
+    
+    # Build conversation
+    conversation = []
+    for m in messages:
+        role = partner.first_name if m.direction == 'inbound' else 'You'
+        conversation.append(f"{role}: {m.body or '[Media]'}")
+    
+    conversation_text = '\n'.join(conversation)
+    
+    prompt = f"""Summarize this SMS conversation between a SilverSky partner manager and {partner.full_name} ({partner.company or 'unknown company'}).
+
+Conversation:
+{conversation_text}
+
+Provide a brief summary (2-3 sentences) covering:
+1. Main topics discussed
+2. Current status/next steps
+3. Partner's sentiment/interest level
+
+Return ONLY the summary, no headers or labels."""
+
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=200,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        summary = response.content[0].text.strip()
+        return jsonify({'summary': summary})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# AI: Analyze sentiment of conversation
+@app.route('/api/ai/sentiment/<int:partner_id>')
+@login_required
+def api_ai_sentiment(partner_id):
+    client = get_ai_client()
+    if not client:
+        return jsonify({'error': 'AI not configured'}), 400
+    
+    messages = Message.query.filter_by(partner_id=partner_id, direction='inbound').order_by(Message.created_at.desc()).limit(5).all()
+    
+    if not messages:
+        return jsonify({'sentiment': 'neutral', 'score': 50, 'label': 'No messages yet'})
+    
+    recent_messages = '\n'.join([m.body or '' for m in messages if m.body])
+    
+    prompt = f"""Analyze the sentiment of these recent messages from a sales prospect:
+
+{recent_messages}
+
+Return ONLY a JSON object with:
+- "sentiment": "positive", "neutral", or "negative"
+- "score": number from 0-100 (0=very negative, 100=very positive)
+- "label": brief 2-3 word description (e.g., "Very interested", "Needs follow-up", "Frustrated")
+
+Example: {{"sentiment": "positive", "score": 75, "label": "Interested"}}"""
+
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=100,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        result = json.loads(response.content[0].text.strip())
+        return jsonify(result)
+    except:
+        return jsonify({'sentiment': 'neutral', 'score': 50, 'label': 'Unknown'})
 
 # API: Message Templates
 @app.route('/api/templates', methods=['GET', 'POST'])

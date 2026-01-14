@@ -65,6 +65,12 @@
             </div>
         </div>
         
+        <!-- AI Compose for Broadcast -->
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <input type="text" class="form-input" id="aiComposeInputBroadcast" placeholder="Ask AI to write... (e.g., 'intro to MxDR benefits')" style="flex: 1; font-size: 0.85rem;" onkeydown="if(event.key==='Enter')generateAiBroadcast()">
+            <button type="button" class="btn btn-sm" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none;" onclick="generateAiBroadcast()" id="aiBroadcastBtn">✨ AI Write</button>
+        </div>
+        
         <div class="form-group">
             <textarea class="form-textarea" id="messageText" rows="4" placeholder="Hey [first_name], wanted to reach out about..." oninput="updateCharCount()"></textarea>
             <div style="display: flex; justify-content: space-between; align-items: start; margin-top: 6px; flex-wrap: wrap; gap: 6px;">
@@ -506,6 +512,44 @@ async function cancelScheduled(id) {
     if (!confirm('Cancel this scheduled message?')) return;
     await fetch(`/api/scheduled/${id}`, { method: 'DELETE' });
     loadScheduled();
+}
+
+async function generateAiBroadcast() {
+    const input = document.getElementById('aiComposeInputBroadcast');
+    const prompt = input.value.trim();
+    
+    if (!prompt) {
+        showToast('Enter what you want to write', 'warning');
+        return;
+    }
+    
+    const btn = document.getElementById('aiBroadcastBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳...';
+    
+    try {
+        const res = await fetch('/api/ai/compose', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: prompt })
+        });
+        const data = await res.json();
+        
+        if (data.error) {
+            showToast(data.error, 'error');
+            return;
+        }
+        
+        document.getElementById('messageText').value = data.message;
+        updateCharCount();
+        input.value = '';
+        showToast('Message generated!');
+    } catch (err) {
+        showToast('Failed to generate message', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '✨ AI Write';
+    }
 }
 
 function openModal(id) {
