@@ -1796,11 +1796,17 @@ def api_template(id):
 @app.route('/api/conversations')
 @login_required
 def api_conversations():
+    user = get_current_user()
     show_archived = request.args.get('archived') == 'true'
     filter_unread = request.args.get('unread') == 'true'
     filter_has_media = request.args.get('has_media') == 'true'
     
-    partners = Partner.query.filter_by(archived=show_archived).all()
+    # Filter by user (admins see all in tenant)
+    if user.is_admin:
+        partners = Partner.query.filter_by(tenant_id=user.tenant_id, archived=show_archived).all()
+    else:
+        partners = Partner.query.filter_by(user_id=user.id, archived=show_archived).all()
+    
     conversations = []
     
     for partner in partners:
