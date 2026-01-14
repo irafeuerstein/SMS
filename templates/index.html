@@ -1,88 +1,70 @@
 {% extends 'base.html' %}
-{% block title %}Dashboard - SilverSky Partners{% endblock %}
+{% block title %}Dashboard - SilverSky SMS{% endblock %}
 
 {% block content %}
 <header class="header">
-    <h1>SilverSky Partners</h1>
+    <h1>
+        <div class="logo-mark">S</div>
+        SilverSky
+    </h1>
+    <a href="/settings" class="header-btn">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+    </a>
 </header>
 
 <main class="content">
-    <div class="stats-grid" id="statsGrid">
+    <!-- Stats -->
+    <div class="stats-grid">
         <div class="stat-card">
             <div class="stat-value" id="totalPartners">-</div>
-            <div class="stat-label">Total Partners</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value" id="neverContacted">-</div>
-            <div class="stat-label">Never Contacted</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value" id="messagesWeek">-</div>
-            <div class="stat-label">Messages This Week</div>
+            <div class="stat-label">Contacts</div>
         </div>
         <div class="stat-card">
             <div class="stat-value" id="unreadCount">-</div>
-            <div class="stat-label">Unread Replies</div>
+            <div class="stat-label">Unread</div>
         </div>
-    </div>
-    
-    <!-- Weekly Stats -->
-    <div class="card" style="margin-bottom: 16px;">
-        <h3 style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 12px;">This Week</h3>
-        <div style="display: flex; justify-content: space-around; text-align: center;">
-            <div>
-                <div style="font-size: 1.3rem; font-weight: 700; color: var(--accent);" id="sentWeek">-</div>
-                <div style="font-size: 0.7rem; color: var(--text-muted);">Sent</div>
-            </div>
-            <div>
-                <div style="font-size: 1.3rem; font-weight: 700; color: var(--success);" id="repliesWeek">-</div>
-                <div style="font-size: 0.7rem; color: var(--text-muted);">Replies</div>
-            </div>
-            <div>
-                <div style="font-size: 1.3rem; font-weight: 700; color: var(--warning);" id="responseRate">-</div>
-                <div style="font-size: 0.7rem; color: var(--text-muted);">Response Rate</div>
-            </div>
+        <div class="stat-card">
+            <div class="stat-value" id="sentWeek">-</div>
+            <div class="stat-label">Sent (7d)</div>
         </div>
-    </div>
-    
-    <!-- Partners by Region -->
-    <div class="card" style="margin-bottom: 16px;">
-        <h3 style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 12px;">Partners by Region</h3>
-        <div id="regionChart"></div>
+        <div class="stat-card">
+            <div class="stat-value" id="responseRate">-</div>
+            <div class="stat-label">Response %</div>
+        </div>
     </div>
     
     <!-- AI Insights -->
-    <div style="background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%); border-radius: 12px; padding: 16px; margin-bottom: 16px; border: 1px solid rgba(102, 126, 234, 0.3);">
-        <h2 style="font-size: 0.9rem; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-            <span style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">✨ AI Insights</span>
-        </h2>
-        
-        <!-- Next Best Actions -->
-        <div style="margin-bottom: 16px;">
-            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-                <span>🎯 Today's Priority Actions</span>
-                <button class="btn btn-sm btn-ghost" onclick="loadNextActions()" id="refreshActionsBtn" style="padding: 2px 8px; font-size: 0.65rem;">Refresh</button>
+    <div class="card" style="background: linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%); border-color: rgba(102, 126, 234, 0.25);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+            <div style="font-weight: 600; font-size: 0.9rem; display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 1.1rem;">✨</span> AI Insights
             </div>
-            <div id="nextActionsList">
-                <div style="text-align: center; padding: 12px; color: var(--text-muted); font-size: 0.8rem;">
-                    <button class="btn btn-sm" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none;" onclick="loadNextActions()">Load AI Recommendations</button>
-                </div>
-            </div>
+            <button class="btn btn-sm btn-ghost" onclick="loadNextActions()" id="refreshActionsBtn" style="padding: 6px 10px; font-size: 0.7rem;">Refresh</button>
         </div>
-        
-        <!-- Ghost Alerts -->
-        <div>
-            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px;">👻 Ghost Alerts</div>
-            <div id="ghostAlertsList">
-                <div style="text-align: center; padding: 12px; color: var(--text-muted); font-size: 0.8rem;">
-                    <button class="btn btn-sm btn-secondary" onclick="loadGhostAlerts()">Check for Ghosts</button>
-                </div>
+        <div id="nextActionsList">
+            <div style="text-align: center; padding: 16px;">
+                <button class="btn btn-sm btn-ai" onclick="loadNextActions()">Load Recommendations</button>
             </div>
         </div>
     </div>
     
-    <h2 style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 12px;">Quick Actions</h2>
-    
+    <!-- Ghost Alerts -->
+    <div class="card">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+            <div style="font-weight: 600; font-size: 0.9rem;">👻 Ghost Alerts</div>
+        </div>
+        <div id="ghostAlertsList">
+            <div style="text-align: center; padding: 16px;">
+                <button class="btn btn-sm btn-secondary" onclick="loadGhostAlerts()">Check for Ghosts</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="section-title">Quick Actions</div>
     <div class="flex gap-2 mb-3">
         <a href="/broadcast" class="btn btn-block">
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18">
@@ -91,24 +73,13 @@
             Send Broadcast
         </a>
     </div>
-    
     <div class="flex gap-2">
-        <a href="/partners" class="btn btn-secondary btn-block">
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/>
-            </svg>
-            Add Partner
-        </a>
-        <a href="/inbox" class="btn btn-secondary btn-block">
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
-            </svg>
-            View Inbox
-        </a>
+        <a href="/partners" class="btn btn-secondary btn-block">+ Add Contact</a>
+        <a href="/inbox" class="btn btn-secondary btn-block">View Inbox</a>
     </div>
     
-    <h2 style="font-size: 0.9rem; color: var(--text-secondary); margin: 20px 0 12px;">Recent Conversations</h2>
-    
+    <!-- Recent Conversations -->
+    <div class="section-title">Recent Conversations</div>
     <div id="recentConvos">
         <div class="loading"><div class="spinner"></div></div>
     </div>
@@ -119,51 +90,20 @@
 <script>
 async function loadDashboard() {
     try {
-        // Load stats from new API
         const statsRes = await fetch('/api/stats');
         const stats = await statsRes.json();
         
         document.getElementById('totalPartners').textContent = stats.total_partners;
-        document.getElementById('neverContacted').textContent = stats.never_contacted;
-        document.getElementById('messagesWeek').textContent = stats.messages_week;
         document.getElementById('unreadCount').textContent = stats.unread;
         document.getElementById('sentWeek').textContent = stats.sent_week;
-        document.getElementById('repliesWeek').textContent = stats.replies_week;
         document.getElementById('responseRate').textContent = stats.response_rate + '%';
         
-        // Render region chart
-        renderRegionChart(stats.partners_by_region);
-        
-        // Load conversations
         const convosRes = await fetch('/api/conversations');
         const convos = await convosRes.json();
         renderConvos(convos.slice(0, 5));
     } catch (err) {
         console.error(err);
     }
-}
-
-function renderRegionChart(regions) {
-    const container = document.getElementById('regionChart');
-    
-    if (!regions || regions.length === 0) {
-        container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 10px;">No regions set up</div>';
-        return;
-    }
-    
-    const maxCount = Math.max(...regions.map(r => r.count));
-    
-    container.innerHTML = regions.map(r => `
-        <div style="margin-bottom: 8px;">
-            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px;">
-                <span style="color: var(--text-secondary);">${escapeHtml(r.name)}</span>
-                <span style="color: var(--text-muted);">${r.count}</span>
-            </div>
-            <div style="background: var(--bg-dark); border-radius: 4px; height: 8px; overflow: hidden;">
-                <div style="background: var(--accent); height: 100%; width: ${maxCount > 0 ? (r.count / maxCount * 100) : 0}%; border-radius: 4px; transition: width 0.5s;"></div>
-            </div>
-        </div>
-    `).join('');
 }
 
 function escapeHtml(str) {
@@ -179,7 +119,12 @@ function renderConvos(convos) {
     if (convos.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
-                <p>No conversations yet</p>
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+                </svg>
+                <h3>No conversations yet</h3>
+                <p>Start by adding contacts and sending messages</p>
+                <a href="/partners" class="btn btn-sm">Add Your First Contact</a>
             </div>
         `;
         return;
@@ -209,19 +154,17 @@ function formatTime(iso) {
     const d = new Date(iso);
     const now = new Date();
     const diff = now - d;
-    
     if (diff < 60000) return 'Now';
     if (diff < 3600000) return Math.floor(diff/60000) + 'm';
     if (diff < 86400000) return Math.floor(diff/3600000) + 'h';
     return d.toLocaleDateString();
 }
 
-// AI: Load Next Best Actions
 async function loadNextActions() {
     const container = document.getElementById('nextActionsList');
     const btn = document.getElementById('refreshActionsBtn');
     
-    container.innerHTML = '<div style="text-align: center; padding: 12px;"><div class="spinner"></div></div>';
+    container.innerHTML = '<div style="text-align: center; padding: 16px;"><div class="spinner"></div></div>';
     btn.disabled = true;
     
     try {
@@ -229,80 +172,62 @@ async function loadNextActions() {
         const actions = await res.json();
         
         if (actions.error) {
-            container.innerHTML = `<div style="text-align: center; padding: 12px; color: var(--error); font-size: 0.8rem;">${actions.error}</div>`;
+            container.innerHTML = `<div style="text-align: center; padding: 16px; color: var(--text-muted); font-size: 0.85rem;">${actions.error}</div>`;
             return;
         }
         
         if (actions.length === 0) {
-            container.innerHTML = '<div style="text-align: center; padding: 12px; color: var(--text-muted); font-size: 0.8rem;">No actions needed right now! 🎉</div>';
+            container.innerHTML = '<div style="text-align: center; padding: 16px; color: var(--accent); font-size: 0.85rem;">✓ All caught up!</div>';
             return;
         }
         
-        const priorityColors = {
-            high: 'var(--error)',
-            medium: 'var(--warning)',
-            low: 'var(--text-muted)'
-        };
+        const priorityColors = { high: 'var(--error)', medium: 'var(--warning)', low: 'var(--text-muted)' };
         
-        container.innerHTML = actions.map(a => `
-            <div style="background: var(--bg-card); border-radius: 8px; padding: 10px; margin-bottom: 8px; cursor: pointer;" onclick="handleAction(${a.partner_id}, '${escapeHtml(a.suggested_message || '')}')">
-                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 4px;">
-                    <div style="font-weight: 600; font-size: 0.85rem;">${escapeHtml(a.partner_name || 'Unknown')}</div>
-                    <span style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; background: ${priorityColors[a.priority]}22; color: ${priorityColors[a.priority]};">${a.priority}</span>
+        container.innerHTML = actions.slice(0, 3).map(a => `
+            <div style="background: var(--bg-hover); border-radius: var(--radius-md); padding: 12px; margin-bottom: 8px; cursor: pointer;" onclick="handleAction(${a.partner_id}, '${escapeHtml(a.suggested_message || '')}')">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-weight: 600; font-size: 0.9rem;">${escapeHtml(a.partner_name || 'Unknown')}</span>
+                    <span class="chip" style="background: ${priorityColors[a.priority]}22; color: ${priorityColors[a.priority]}; font-size: 0.65rem;">${a.priority}</span>
                 </div>
-                <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 6px;">${a.partner_company || ''}</div>
-                <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px;">💡 ${escapeHtml(a.reason)}</div>
-                <div style="font-size: 0.8rem; color: var(--accent); background: var(--bg-dark); padding: 6px 8px; border-radius: 6px;">
-                    "${escapeHtml(a.suggested_message || '')}"
-                </div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px;">💡 ${escapeHtml(a.reason)}</div>
+                <div style="font-size: 0.85rem; color: var(--accent);">"${escapeHtml(a.suggested_message || '')}"</div>
             </div>
         `).join('');
-        
     } catch (err) {
-        container.innerHTML = '<div style="text-align: center; padding: 12px; color: var(--error); font-size: 0.8rem;">Failed to load</div>';
+        container.innerHTML = '<div style="text-align: center; padding: 16px; color: var(--error);">Failed to load</div>';
     } finally {
         btn.disabled = false;
     }
 }
 
-// AI: Load Ghost Alerts
 async function loadGhostAlerts() {
     const container = document.getElementById('ghostAlertsList');
-    container.innerHTML = '<div style="text-align: center; padding: 12px;"><div class="spinner"></div></div>';
+    container.innerHTML = '<div style="text-align: center; padding: 16px;"><div class="spinner"></div></div>';
     
     try {
         const res = await fetch('/api/ai/ghost-alerts');
         const ghosts = await res.json();
         
         if (ghosts.length === 0) {
-            container.innerHTML = '<div style="text-align: center; padding: 12px; color: var(--accent); font-size: 0.8rem;">No ghosts! Everyone is engaged 👍</div>';
+            container.innerHTML = '<div style="text-align: center; padding: 16px; color: var(--accent); font-size: 0.85rem;">✓ No ghosts - everyone engaged!</div>';
             return;
         }
         
-        container.innerHTML = ghosts.slice(0, 5).map(g => `
-            <div style="background: var(--bg-card); border-radius: 8px; padding: 10px; margin-bottom: 8px; border-left: 3px solid ${g.urgency === 'high' ? 'var(--error)' : g.urgency === 'medium' ? 'var(--warning)' : 'var(--text-muted)'};">
+        container.innerHTML = ghosts.slice(0, 3).map(g => `
+            <div style="background: var(--bg-hover); border-radius: var(--radius-md); padding: 12px; margin-bottom: 8px; border-left: 3px solid ${g.urgency === 'high' ? 'var(--error)' : 'var(--warning)'}; cursor: pointer;" onclick="handleAction(${g.partner_id}, '${escapeHtml(g.suggested_message || '')}')">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                    <div style="font-weight: 600; font-size: 0.85rem;">${escapeHtml(g.name)}</div>
-                    <span style="font-size: 0.7rem; color: var(--error);">👻 ${g.days_waiting} days</span>
+                    <span style="font-weight: 600; font-size: 0.9rem;">${escapeHtml(g.name)}</span>
+                    <span style="font-size: 0.75rem; color: var(--error);">${g.days_waiting}d silent</span>
                 </div>
-                <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px;">
-                    Last msg: "${escapeHtml(g.last_message.substring(0, 40))}${g.last_message.length > 40 ? '...' : ''}"
-                </div>
-                ${g.suggested_message ? `
-                    <div style="font-size: 0.8rem; color: var(--accent); background: var(--bg-dark); padding: 6px 8px; border-radius: 6px; cursor: pointer;" onclick="handleAction(${g.partner_id}, '${escapeHtml(g.suggested_message)}')">
-                        💬 "${escapeHtml(g.suggested_message)}"
-                    </div>
-                ` : ''}
+                ${g.suggested_message ? `<div style="font-size: 0.85rem; color: var(--accent);">"${escapeHtml(g.suggested_message)}"</div>` : ''}
             </div>
         `).join('');
-        
     } catch (err) {
-        container.innerHTML = '<div style="text-align: center; padding: 12px; color: var(--error); font-size: 0.8rem;">Failed to load</div>';
+        container.innerHTML = '<div style="text-align: center; padding: 16px; color: var(--error);">Failed to load</div>';
     }
 }
 
 function handleAction(partnerId, message) {
-    // Go to inbox with the partner and optionally pre-fill message
     const url = `/inbox?partner=${partnerId}${message ? '&msg=' + encodeURIComponent(message) : ''}`;
     location.href = url;
 }
