@@ -1,227 +1,322 @@
 {% extends 'base.html' %}
-{% block title %}Settings - SilverSky Partners{% endblock %}
+{% block title %}Settings - SilverSky SMS{% endblock %}
+
+{% block extra_css %}
+<style>
+    .settings-group {
+        background: var(--bg-card);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--border);
+        margin-bottom: 12px;
+        overflow: hidden;
+    }
+    .settings-group-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px;
+        cursor: pointer;
+        transition: background 0.15s ease;
+    }
+    .settings-group-header:active {
+        background: var(--bg-hover);
+    }
+    .settings-group-title {
+        font-weight: 600;
+        font-size: 0.95rem;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .settings-group-title .icon {
+        width: 32px;
+        height: 32px;
+        border-radius: var(--radius-sm);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+    }
+    .settings-group-chevron {
+        color: var(--text-muted);
+        transition: transform 0.2s ease;
+    }
+    .settings-group.open .settings-group-chevron {
+        transform: rotate(180deg);
+    }
+    .settings-group-content {
+        display: none;
+        padding: 0 16px 16px;
+        border-top: 1px solid var(--border);
+    }
+    .settings-group.open .settings-group-content {
+        display: block;
+    }
+    .settings-group-subtitle {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+    }
+    .step-indicator {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 0.75rem;
+        background: var(--bg-hover);
+        color: var(--text-muted);
+    }
+    .step-indicator.active {
+        background: var(--ai-gradient);
+        color: white;
+    }
+    .step-indicator.done {
+        background: var(--accent);
+        color: var(--bg-primary);
+    }
+    .ai-step {
+        padding: 14px;
+        background: var(--bg-hover);
+        border-radius: var(--radius-md);
+        margin-bottom: 12px;
+    }
+    .ai-step:last-child {
+        margin-bottom: 0;
+    }
+    .ai-step-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 8px;
+    }
+    .ai-step-title {
+        font-weight: 600;
+        font-size: 0.9rem;
+    }
+    .ai-step-desc {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+        margin-bottom: 12px;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
 <header class="header">
-    <h1>Settings</h1>
+    <h1>
+        <div class="logo-mark">S</div>
+        Settings
+    </h1>
 </header>
 
 <main class="content">
-    <div class="settings-section-title">Appearance</div>
-    <div class="card" style="margin-bottom: 16px;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div>
-                <div style="font-weight: 500;">Theme</div>
-                <div style="font-size: 0.8rem; color: var(--text-muted);">Switch between dark and light mode</div>
-            </div>
-            <button class="btn btn-sm btn-secondary" onclick="toggleTheme()" id="themeBtn">
-                🌙 Dark
-            </button>
-        </div>
-    </div>
-
-    <div class="settings-section-title">Regions</div>
-    <div class="card">
-        <div id="regionsList" class="tag-list mb-3"></div>
-        <div class="flex gap-2">
-            <input type="text" class="form-input" id="newRegion" placeholder="Add region (e.g., SoCal)">
-            <button class="btn btn-sm" onclick="addRegion()">Add</button>
-        </div>
-    </div>
-    
-    <div class="settings-section-title">TSDs (Technology Services Distributors)</div>
-    <div class="card">
-        <div id="tsdsList" class="tag-list mb-3"></div>
-        <div class="flex gap-2">
-            <input type="text" class="form-input" id="newTsd" placeholder="Add TSD (e.g., Pax8)">
-            <button class="btn btn-sm" onclick="addTsd()">Add</button>
-        </div>
-    </div>
-    
-    <div class="settings-section-title">Products</div>
-    <div class="card">
-        <div id="productsList" class="tag-list mb-3"></div>
-        <div class="flex gap-2">
-            <input type="text" class="form-input" id="newProduct" placeholder="Add product">
-            <button class="btn btn-sm" onclick="addProduct()">Add</button>
-        </div>
-    </div>
-    
-    <div class="settings-section-title">Custom Tags</div>
-    <div class="card">
-        <div id="tagsList" class="tag-list mb-3"></div>
-        <div class="flex gap-2">
-            <input type="text" class="form-input" id="newTag" placeholder="Add tag (e.g., VIP, Follow-up)">
-            <select class="form-select" id="newTagColor" style="width: 100px;">
-                <option value="accent">Teal</option>
-                <option value="warning">Yellow</option>
-                <option value="error">Red</option>
-                <option value="secondary">Gray</option>
-            </select>
-            <button class="btn btn-sm" onclick="addTag()">Add</button>
-        </div>
-    </div>
-    
-    <div class="settings-section-title" style="display: flex; align-items: center; gap: 8px;">
-        <span style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">✨ AI Training</span>
-        <span id="trainingProgress" style="font-size: 0.7rem; color: var(--text-muted);"></span>
-    </div>
-    
-    <!-- Step 1: Website Scrape -->
-    <div class="card" style="margin-bottom: 16px; border: 1px solid rgba(102, 126, 234, 0.3);">
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem;">1</div>
-            <div style="font-weight: 600;">Start Here: Import Your Website</div>
-            <span id="step1Status" style="margin-left: auto;"></span>
-        </div>
-        <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 12px; margin-left: 38px;">
-            We'll automatically pull product info, company details, and key selling points from your site.
-        </div>
-        <div class="flex gap-2" style="margin-left: 38px;">
-            <input type="text" class="form-input" id="scrapeUrl" placeholder="silversky.com" style="flex: 1;">
-            <button class="btn" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none;" onclick="scrapeWebsite()" id="scrapeBtn">
-                🔍 Import
-            </button>
-        </div>
-        <div id="scrapeStatus" style="font-size: 0.8rem; margin-top: 8px; margin-left: 38px;"></div>
-    </div>
-    
-    <!-- Step 2: Review & Refine -->
-    <div class="card" style="margin-bottom: 16px;">
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-            <div style="background: var(--bg-hover); color: var(--text-secondary); width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem;" id="step2Circle">2</div>
-            <div style="font-weight: 600;">Review What AI Learned</div>
-            <span id="step2Status" style="margin-left: auto;"></span>
-        </div>
-        <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 12px; margin-left: 38px;">
-            Check the knowledge base, edit anything that's wrong, delete what's not useful.
-        </div>
-        <button class="btn btn-secondary" style="margin-left: 38px;" onclick="openModal('aiTrainingModal')">
-            📚 View Knowledge Base (<span id="knowledgeCount">0</span> items)
-        </button>
-    </div>
-    
-    <!-- Step 3: Add Objection Handling -->
-    <div class="card" style="margin-bottom: 16px;">
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-            <div style="background: var(--bg-hover); color: var(--text-secondary); width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem;" id="step3Circle">3</div>
-            <div style="font-weight: 600;">Add Objection Handling</div>
-            <span id="step3Status" style="margin-left: auto;"></span>
-        </div>
-        <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 12px; margin-left: 38px;">
-            What do partners commonly push back on? Teach AI how to respond.
-        </div>
-        <div style="margin-left: 38px;">
-            <div id="objectionSuggestions" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
-                <button class="btn btn-sm btn-ghost" onclick="addSuggestedObjection('Too expensive')">+ "Too expensive"</button>
-                <button class="btn btn-sm btn-ghost" onclick="addSuggestedObjection('Already have a solution')">+ "Already have a solution"</button>
-                <button class="btn btn-sm btn-ghost" onclick="addSuggestedObjection('Need to think about it')">+ "Need to think about it"</button>
-                <button class="btn btn-sm btn-ghost" onclick="addSuggestedObjection('Not the right time')">+ "Not the right time"</button>
-            </div>
-            <div class="form-group" style="margin-bottom: 8px;">
-                <input type="text" class="form-input" id="objectionTitle" placeholder="Objection (e.g., 'Too expensive')">
-            </div>
-            <div class="form-group" style="margin-bottom: 8px;">
-                <textarea class="form-textarea" id="objectionResponse" rows="2" placeholder="How to respond... (e.g., 'I understand budget is a concern. Consider that the average breach costs $4.45M...')"></textarea>
-            </div>
-            <button class="btn btn-sm" onclick="addObjection()">+ Add Objection Response</button>
-        </div>
-    </div>
-    
-    <!-- Step 4: Set Your Tone -->
-    <div class="card" style="margin-bottom: 16px;">
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-            <div style="background: var(--bg-hover); color: var(--text-secondary); width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem;" id="step4Circle">4</div>
-            <div style="font-weight: 600;">Learn Your Writing Style</div>
-            <span id="step4Status" style="margin-left: auto;"></span>
-        </div>
-        <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 12px; margin-left: 38px;">
-            AI can learn to write like you - your tone, word choices, and personality.
-        </div>
-        <div style="margin-left: 38px;">
-            <!-- Option A: Analyze sent messages -->
-            <div style="background: var(--bg-dark); border-radius: 8px; padding: 12px; margin-bottom: 12px; border: 1px solid rgba(102, 126, 234, 0.3);">
-                <div style="font-weight: 500; margin-bottom: 6px;">🔍 Option A: Analyze Your Sent Messages</div>
-                <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 10px;">
-                    AI will study your message history and learn how you write.
-                </div>
-                <button class="btn btn-sm" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none;" onclick="analyzeMyStyle()" id="analyzeStyleBtn">
-                    ✨ Analyze My Messages
-                </button>
-                <div id="analyzeStatus" style="font-size: 0.75rem; margin-top: 8px;"></div>
-            </div>
-            
-            <!-- Option B: Paste examples -->
-            <div style="background: var(--bg-dark); border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-                <div style="font-weight: 500; margin-bottom: 6px;">📝 Option B: Paste Example Messages</div>
-                <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 10px;">
-                    Paste 3-5 messages you've sent that represent your style.
-                </div>
-                <textarea class="form-textarea" id="exampleMessages" rows="4" placeholder="Paste your example messages here, one per line...
-
-Hey John, quick question - are you guys still dealing with alert fatigue on your current SIEM?
-
-Thanks for the intro! Would love to set up a quick call to learn more about what you're working with.
-
-Totally get it, timing is everything. Mind if I check back in Q2?"></textarea>
-                <button class="btn btn-sm" style="margin-top: 8px;" onclick="learnFromExamples()" id="learnExamplesBtn">
-                    🧠 Learn From These
-                </button>
-            </div>
-            
-            <!-- Option C: Presets + Manual -->
-            <div style="margin-bottom: 10px;">
-                <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px;">Or choose a preset / describe manually:</div>
-                <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
-                    <button class="btn btn-sm btn-ghost" onclick="setTonePreset('casual')" id="toneCasual">😊 Casual</button>
-                    <button class="btn btn-sm btn-ghost" onclick="setTonePreset('professional')" id="toneProfessional">👔 Professional</button>
-                    <button class="btn btn-sm btn-ghost" onclick="setTonePreset('consultative')" id="toneConsultative">🤝 Consultative</button>
+    <!-- Appearance -->
+    <div class="settings-group open">
+        <div class="settings-group-header" onclick="toggleSettingsGroup(this)">
+            <div class="settings-group-title">
+                <div class="icon" style="background: var(--bg-hover);">🎨</div>
+                <div>
+                    <div>Appearance</div>
+                    <div class="settings-group-subtitle">Theme & display</div>
                 </div>
             </div>
-            <div class="form-group" style="margin-bottom: 8px;">
-                <textarea class="form-textarea" id="toneDescription" rows="3" placeholder="Or describe your style manually..."></textarea>
-            </div>
-            <button class="btn btn-sm" onclick="saveTone()">💾 Save Style</button>
-        </div>
-    </div>
-    
-    <!-- Step 5: Add More (Optional) -->
-    <div class="card" style="margin-bottom: 16px;">
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-            <div style="background: var(--bg-hover); color: var(--text-secondary); width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem;" id="step5Circle">5</div>
-            <div style="font-weight: 600;">Add More Knowledge (Optional)</div>
-        </div>
-        <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 12px; margin-left: 38px;">
-            The more you add, the smarter AI gets. Add FAQs, pricing details, competitive info, etc.
-        </div>
-        <div style="margin-left: 38px;">
-            <div class="form-group" style="margin-bottom: 8px;">
-                <select class="form-select" id="quickCategory">
-                    <option value="products">📦 Products & Services</option>
-                    <option value="faq">❓ FAQ</option>
-                    <option value="general">📋 General Info</option>
-                    <option value="objections">🛡️ Objection Handling</option>
-                    <option value="tone">🎯 Communication Style</option>
-                </select>
-            </div>
-            <div class="form-group" style="margin-bottom: 8px;">
-                <input type="text" class="form-input" id="quickTitle" placeholder="Title (e.g., 'MxDR Pricing Tiers')">
-            </div>
-            <div class="form-group" style="margin-bottom: 8px;">
-                <textarea class="form-textarea" id="quickContent" rows="3" placeholder="Content..."></textarea>
-            </div>
-            <button class="btn btn-sm" onclick="quickAddKnowledge()">+ Add to Knowledge Base</button>
-        </div>
-    </div>
-    
-    <div class="settings-section-title">Account</div>
-    <div class="settings-list">
-        <a href="/logout" class="settings-item" style="text-decoration: none; color: var(--error);">
-            <span class="settings-item-label">Logout</span>
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+            <svg class="settings-group-chevron" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
             </svg>
-        </a>
+        </div>
+        <div class="settings-group-content">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="font-weight: 500;">Theme</div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted);">Dark or light mode</div>
+                </div>
+                <button class="btn btn-sm btn-secondary" onclick="toggleTheme()" id="themeBtn">🌙 Dark</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contact Data -->
+    <div class="settings-group">
+        <div class="settings-group-header" onclick="toggleSettingsGroup(this)">
+            <div class="settings-group-title">
+                <div class="icon" style="background: var(--accent-dim);">📋</div>
+                <div>
+                    <div>Contact Data</div>
+                    <div class="settings-group-subtitle">Regions, TSDs, Products, Tags</div>
+                </div>
+            </div>
+            <svg class="settings-group-chevron" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+        </div>
+        <div class="settings-group-content">
+            <!-- Regions -->
+            <div style="margin-bottom: 20px;">
+                <div style="font-weight: 500; margin-bottom: 8px;">Regions</div>
+                <div id="regionsList" class="tag-list mb-2"></div>
+                <div class="flex gap-2">
+                    <input type="text" class="form-input" id="newRegion" placeholder="Add region..." style="flex: 1;">
+                    <button class="btn btn-sm" onclick="addRegion()">Add</button>
+                </div>
+            </div>
+            
+            <!-- TSDs -->
+            <div style="margin-bottom: 20px;">
+                <div style="font-weight: 500; margin-bottom: 8px;">TSDs</div>
+                <div id="tsdsList" class="tag-list mb-2"></div>
+                <div class="flex gap-2">
+                    <input type="text" class="form-input" id="newTsd" placeholder="Add TSD..." style="flex: 1;">
+                    <button class="btn btn-sm" onclick="addTsd()">Add</button>
+                </div>
+            </div>
+            
+            <!-- Products -->
+            <div style="margin-bottom: 20px;">
+                <div style="font-weight: 500; margin-bottom: 8px;">Products</div>
+                <div id="productsList" class="tag-list mb-2"></div>
+                <div class="flex gap-2">
+                    <input type="text" class="form-input" id="newProduct" placeholder="Add product..." style="flex: 1;">
+                    <button class="btn btn-sm" onclick="addProduct()">Add</button>
+                </div>
+            </div>
+            
+            <!-- Tags -->
+            <div>
+                <div style="font-weight: 500; margin-bottom: 8px;">Custom Tags</div>
+                <div id="tagsList" class="tag-list mb-2"></div>
+                <div class="flex gap-2">
+                    <input type="text" class="form-input" id="newTag" placeholder="Add tag..." style="flex: 1;">
+                    <select class="form-select" id="newTagColor" style="width: 90px;">
+                        <option value="accent">Teal</option>
+                        <option value="warning">Yellow</option>
+                        <option value="error">Red</option>
+                        <option value="secondary">Gray</option>
+                    </select>
+                    <button class="btn btn-sm" onclick="addTag()">Add</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Training -->
+    <div class="settings-group">
+        <div class="settings-group-header" onclick="toggleSettingsGroup(this)">
+            <div class="settings-group-title">
+                <div class="icon" style="background: var(--ai-dim);">✨</div>
+                <div>
+                    <div style="background: var(--ai-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">AI Training</div>
+                    <div class="settings-group-subtitle"><span id="knowledgeCount">0</span> items learned</div>
+                </div>
+            </div>
+            <svg class="settings-group-chevron" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+        </div>
+        <div class="settings-group-content">
+            <!-- Step 1: Import Website -->
+            <div class="ai-step" style="border: 1px solid rgba(102, 126, 234, 0.3);">
+                <div class="ai-step-header">
+                    <div class="step-indicator active" id="step1Ind">1</div>
+                    <div class="ai-step-title">Import Your Website</div>
+                </div>
+                <div class="ai-step-desc">Auto-extract products, company info, and selling points.</div>
+                <div class="flex gap-2">
+                    <input type="text" class="form-input" id="scrapeUrl" placeholder="yoursite.com" style="flex: 1;">
+                    <button class="btn btn-sm btn-ai" onclick="scrapeWebsite()" id="scrapeBtn">🔍 Import</button>
+                </div>
+                <div id="scrapeStatus" style="font-size: 0.75rem; margin-top: 8px;"></div>
+            </div>
+            
+            <!-- Step 2: Review -->
+            <div class="ai-step">
+                <div class="ai-step-header">
+                    <div class="step-indicator" id="step2Ind">2</div>
+                    <div class="ai-step-title">Review Knowledge Base</div>
+                </div>
+                <div class="ai-step-desc">Check, edit, or delete what AI learned.</div>
+                <button class="btn btn-sm btn-secondary" onclick="openModal('aiTrainingModal')">📚 View Knowledge</button>
+            </div>
+            
+            <!-- Step 3: Objections -->
+            <div class="ai-step">
+                <div class="ai-step-header">
+                    <div class="step-indicator" id="step3Ind">3</div>
+                    <div class="ai-step-title">Add Objection Responses</div>
+                </div>
+                <div class="ai-step-desc">Teach AI how to handle common pushbacks.</div>
+                <div class="flex gap-2 mb-2" style="flex-wrap: wrap;">
+                    <button class="btn btn-sm btn-ghost" onclick="addSuggestedObjection('Too expensive')">+ Too expensive</button>
+                    <button class="btn btn-sm btn-ghost" onclick="addSuggestedObjection('Already have solution')">+ Have solution</button>
+                    <button class="btn btn-sm btn-ghost" onclick="addSuggestedObjection('Not right time')">+ Not right time</button>
+                </div>
+                <input type="text" class="form-input mb-2" id="objectionTitle" placeholder="Objection...">
+                <textarea class="form-textarea mb-2" id="objectionResponse" rows="2" placeholder="How to respond..."></textarea>
+                <button class="btn btn-sm" onclick="addObjection()">+ Add Response</button>
+            </div>
+            
+            <!-- Step 4: Writing Style -->
+            <div class="ai-step">
+                <div class="ai-step-header">
+                    <div class="step-indicator" id="step4Ind">4</div>
+                    <div class="ai-step-title">Learn Your Style</div>
+                </div>
+                <div class="ai-step-desc">AI learns to write like you.</div>
+                <button class="btn btn-sm btn-ai mb-3" onclick="analyzeMyStyle()" id="analyzeStyleBtn">✨ Analyze My Messages</button>
+                <div id="analyzeStatus" style="font-size: 0.75rem; margin-bottom: 8px;"></div>
+                <div class="flex gap-2 mb-2" style="flex-wrap: wrap;">
+                    <button class="btn btn-sm btn-ghost" onclick="setTonePreset('casual')">😊 Casual</button>
+                    <button class="btn btn-sm btn-ghost" onclick="setTonePreset('professional')">👔 Professional</button>
+                    <button class="btn btn-sm btn-ghost" onclick="setTonePreset('consultative')">🤝 Consultative</button>
+                </div>
+                <textarea class="form-textarea mb-2" id="toneDescription" rows="2" placeholder="Or describe your style..."></textarea>
+                <button class="btn btn-sm" onclick="saveTone()">💾 Save Style</button>
+            </div>
+            
+            <!-- Step 5: Add More -->
+            <div class="ai-step">
+                <div class="ai-step-header">
+                    <div class="step-indicator" id="step5Ind">5</div>
+                    <div class="ai-step-title">Add More Knowledge</div>
+                </div>
+                <div class="ai-step-desc">FAQs, pricing, competitive info, etc.</div>
+                <select class="form-select mb-2" id="quickCategory">
+                    <option value="products">📦 Products</option>
+                    <option value="faq">❓ FAQ</option>
+                    <option value="general">📋 General</option>
+                    <option value="objections">🛡️ Objections</option>
+                </select>
+                <input type="text" class="form-input mb-2" id="quickTitle" placeholder="Title...">
+                <textarea class="form-textarea mb-2" id="quickContent" rows="2" placeholder="Content..."></textarea>
+                <button class="btn btn-sm" onclick="quickAddKnowledge()">+ Add</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Account -->
+    <div class="settings-group">
+        <div class="settings-group-header" onclick="toggleSettingsGroup(this)">
+            <div class="settings-group-title">
+                <div class="icon" style="background: rgba(255, 77, 106, 0.15);">👤</div>
+                <div>
+                    <div>Account</div>
+                    <div class="settings-group-subtitle">Logout & app info</div>
+                </div>
+            </div>
+            <svg class="settings-group-chevron" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+        </div>
+        <div class="settings-group-content">
+            <a href="/logout" class="btn btn-secondary btn-block mb-3" style="color: var(--error); text-decoration: none;">
+                Logout
+            </a>
+            <div style="text-align: center; padding-top: 12px; border-top: 1px solid var(--border);">
+                <div style="font-size: 0.75rem; color: var(--text-muted);">SilverSky SMS</div>
+                <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">Version 1.2.0</div>
+            </div>
+        </div>
     </div>
 </main>
 
@@ -234,7 +329,7 @@ Totally get it, timing is everything. Mind if I check back in Q2?"></textarea>
             <label class="form-label">Name</label>
             <input type="text" class="form-input" id="editName">
         </div>
-        <div class="form-group" id="editColorGroup" style="display: none;">
+        <div class="form-group hidden" id="editColorGroup">
             <label class="form-label">Color</label>
             <select class="form-select" id="editColor">
                 <option value="accent">Teal</option>
@@ -254,15 +349,10 @@ Totally get it, timing is everything. Mind if I check back in Q2?"></textarea>
 
 <!-- AI Training Modal -->
 <div class="modal-overlay" id="aiTrainingModal">
-    <div class="modal" style="max-height: 80vh; overflow-y: auto;">
+    <div class="modal" style="max-height: 80vh;">
         <div class="modal-handle"></div>
-        <h2 class="modal-title">✨ AI Knowledge Base</h2>
-        <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 16px;">
-            This is everything the AI knows about your business. Add, edit, or remove items to improve AI responses.
-        </div>
-        
+        <h2 class="modal-title">📚 Knowledge Base</h2>
         <div id="knowledgeList"></div>
-        
         <button class="btn btn-secondary btn-block mt-4" onclick="closeModal('aiTrainingModal')">Close</button>
     </div>
 </div>
@@ -275,11 +365,11 @@ Totally get it, timing is everything. Mind if I check back in Q2?"></textarea>
         <div class="form-group">
             <label class="form-label">Category</label>
             <select class="form-select" id="editKnowledgeCategory">
-                <option value="products">Products & Services</option>
-                <option value="objections">Objection Handling</option>
+                <option value="products">Products</option>
+                <option value="objections">Objections</option>
                 <option value="faq">FAQ</option>
-                <option value="tone">Communication Style</option>
-                <option value="general">General Info</option>
+                <option value="tone">Tone</option>
+                <option value="general">General</option>
             </select>
         </div>
         <div class="form-group">
@@ -288,7 +378,7 @@ Totally get it, timing is everything. Mind if I check back in Q2?"></textarea>
         </div>
         <div class="form-group">
             <label class="form-label">Content</label>
-            <textarea class="form-textarea" id="editKnowledgeContent" rows="5"></textarea>
+            <textarea class="form-textarea" id="editKnowledgeContent" rows="4"></textarea>
         </div>
         <input type="hidden" id="editKnowledgeId">
         <div class="flex gap-2 mt-4">
@@ -301,16 +391,18 @@ Totally get it, timing is everything. Mind if I check back in Q2?"></textarea>
 
 {% block extra_js %}
 <script>
-let regions = [], tsds = [], products = [], tags = [];
+let regions = [], tsds = [], products = [], tags = [], knowledge = [];
 
-// Update theme button text on load
+function toggleSettingsGroup(header) {
+    header.parentElement.classList.toggle('open');
+}
+
 function updateThemeBtn() {
     const theme = document.documentElement.getAttribute('data-theme') || 'dark';
     document.getElementById('themeBtn').textContent = theme === 'dark' ? '🌙 Dark' : '☀️ Light';
 }
 updateThemeBtn();
 
-// Override toggleTheme to also update button
 const originalToggleTheme = window.toggleTheme;
 window.toggleTheme = function() {
     originalToggleTheme();
@@ -320,87 +412,50 @@ window.toggleTheme = function() {
 async function loadData() {
     try {
         const [r1, r2, r3, r4] = await Promise.all([
-            fetch('/api/regions'),
-            fetch('/api/tsds'),
-            fetch('/api/products'),
-            fetch('/api/tags')
+            fetch('/api/regions'), fetch('/api/tsds'), fetch('/api/products'), fetch('/api/tags')
         ]);
         regions = await r1.json();
         tsds = await r2.json();
         products = await r3.json();
         tags = await r4.json();
         render();
-    } catch (err) {
-        console.error('Failed to load data:', err);
-    }
+    } catch (err) { console.error(err); }
 }
 
 function getTagColorStyle(color) {
     const colors = {
-        accent: 'background: rgba(0, 212, 170, 0.15); color: var(--accent);',
-        warning: 'background: rgba(255, 187, 0, 0.15); color: var(--warning);',
-        error: 'background: rgba(255, 85, 102, 0.15); color: var(--error);',
+        accent: 'background: var(--accent-dim); color: var(--accent);',
+        warning: 'background: rgba(255, 193, 7, 0.15); color: var(--warning);',
+        error: 'background: rgba(255, 77, 106, 0.15); color: var(--error);',
         secondary: 'background: var(--bg-hover); color: var(--text-secondary);'
     };
     return colors[color] || colors.secondary;
 }
 
 function render() {
-    // Regions
-    const regionsEl = document.getElementById('regionsList');
-    if (regions.length === 0) {
-        regionsEl.innerHTML = '<span style="color: var(--text-muted);">No regions yet</span>';
-    } else {
-        regionsEl.innerHTML = regions.map(r => `
-            <div class="tag-item">
-                <span style="flex: 1;">${escapeHtml(r.name)}</span>
-                <button onclick="openEdit('region', ${r.id})" title="Edit" style="margin-right: 4px;">✎</button>
-                <button onclick="deleteItem('region', ${r.id})" title="Delete">✕</button>
-            </div>
-        `).join('');
-    }
+    document.getElementById('regionsList').innerHTML = regions.length ? regions.map(r => `
+        <div class="tag-item"><span style="flex:1;">${escapeHtml(r.name)}</span>
+        <button onclick="openEdit('region',${r.id})">✎</button>
+        <button onclick="deleteItem('region',${r.id})">✕</button></div>
+    `).join('') : '<span class="text-muted">No regions</span>';
     
-    // TSDs
-    const tsdsEl = document.getElementById('tsdsList');
-    if (tsds.length === 0) {
-        tsdsEl.innerHTML = '<span style="color: var(--text-muted);">No TSDs yet</span>';
-    } else {
-        tsdsEl.innerHTML = tsds.map(t => `
-            <div class="tag-item">
-                <span style="flex: 1;">${escapeHtml(t.name)}</span>
-                <button onclick="openEdit('tsd', ${t.id})" title="Edit" style="margin-right: 4px;">✎</button>
-                <button onclick="deleteItem('tsd', ${t.id})" title="Delete">✕</button>
-            </div>
-        `).join('');
-    }
+    document.getElementById('tsdsList').innerHTML = tsds.length ? tsds.map(t => `
+        <div class="tag-item"><span style="flex:1;">${escapeHtml(t.name)}</span>
+        <button onclick="openEdit('tsd',${t.id})">✎</button>
+        <button onclick="deleteItem('tsd',${t.id})">✕</button></div>
+    `).join('') : '<span class="text-muted">No TSDs</span>';
     
-    // Products
-    const productsEl = document.getElementById('productsList');
-    if (products.length === 0) {
-        productsEl.innerHTML = '<span style="color: var(--text-muted);">No products yet</span>';
-    } else {
-        productsEl.innerHTML = products.map(p => `
-            <div class="tag-item">
-                <span style="flex: 1;">${escapeHtml(p.name)}</span>
-                <button onclick="openEdit('product', ${p.id})" title="Edit" style="margin-right: 4px;">✎</button>
-                <button onclick="deleteItem('product', ${p.id})" title="Delete">✕</button>
-            </div>
-        `).join('');
-    }
+    document.getElementById('productsList').innerHTML = products.length ? products.map(p => `
+        <div class="tag-item"><span style="flex:1;">${escapeHtml(p.name)}</span>
+        <button onclick="openEdit('product',${p.id})">✎</button>
+        <button onclick="deleteItem('product',${p.id})">✕</button></div>
+    `).join('') : '<span class="text-muted">No products</span>';
     
-    // Tags
-    const tagsEl = document.getElementById('tagsList');
-    if (tags.length === 0) {
-        tagsEl.innerHTML = '<span style="color: var(--text-muted);">No custom tags yet</span>';
-    } else {
-        tagsEl.innerHTML = tags.map(t => `
-            <div class="tag-item" style="${getTagColorStyle(t.color)}">
-                <span style="flex: 1;">${escapeHtml(t.name)}</span>
-                <button onclick="openEdit('tag', ${t.id})" title="Edit" style="margin-right: 4px;">✎</button>
-                <button onclick="deleteItem('tag', ${t.id})" title="Delete">✕</button>
-            </div>
-        `).join('');
-    }
+    document.getElementById('tagsList').innerHTML = tags.length ? tags.map(t => `
+        <div class="tag-item" style="${getTagColorStyle(t.color)}"><span style="flex:1;">${escapeHtml(t.name)}</span>
+        <button onclick="openEdit('tag',${t.id})">✎</button>
+        <button onclick="deleteItem('tag',${t.id})">✕</button></div>
+    `).join('') : '<span class="text-muted">No tags</span>';
 }
 
 function escapeHtml(str) {
@@ -411,106 +466,49 @@ function escapeHtml(str) {
 
 async function addRegion() {
     const input = document.getElementById('newRegion');
-    const name = input.value.trim();
-    if (!name) return;
-    
-    const res = await fetch('/api/regions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name })
-    });
-    if (res.ok) {
-        input.value = '';
-        showToast('Region added');
-        loadData();
-    }
+    if (!input.value.trim()) return;
+    await fetch('/api/regions', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name: input.value.trim()}) });
+    input.value = ''; showToast('Region added'); loadData();
 }
 
 async function addTsd() {
     const input = document.getElementById('newTsd');
-    const name = input.value.trim();
-    if (!name) return;
-    
-    const res = await fetch('/api/tsds', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name })
-    });
-    if (res.ok) {
-        input.value = '';
-        showToast('TSD added');
-        loadData();
-    }
+    if (!input.value.trim()) return;
+    await fetch('/api/tsds', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name: input.value.trim()}) });
+    input.value = ''; showToast('TSD added'); loadData();
 }
 
 async function addProduct() {
     const input = document.getElementById('newProduct');
-    const name = input.value.trim();
-    if (!name) return;
-    
-    const res = await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name })
-    });
-    if (res.ok) {
-        input.value = '';
-        showToast('Product added');
-        loadData();
-    }
+    if (!input.value.trim()) return;
+    await fetch('/api/products', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name: input.value.trim()}) });
+    input.value = ''; showToast('Product added'); loadData();
 }
 
 async function addTag() {
     const input = document.getElementById('newTag');
-    const colorSelect = document.getElementById('newTagColor');
-    const name = input.value.trim();
-    const color = colorSelect.value;
-    if (!name) return;
-    
-    const res = await fetch('/api/tags', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, color })
-    });
-    if (res.ok) {
-        input.value = '';
-        showToast('Tag added');
-        loadData();
-    }
+    const color = document.getElementById('newTagColor').value;
+    if (!input.value.trim()) return;
+    await fetch('/api/tags', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name: input.value.trim(), color}) });
+    input.value = ''; showToast('Tag added'); loadData();
 }
 
 async function deleteItem(type, id) {
-    if (!confirm('Delete this ' + type + '?')) return;
-    
-    let url = '/api/' + type + 's/' + id;
-    await fetch(url, { method: 'DELETE' });
-    showToast(type.charAt(0).toUpperCase() + type.slice(1) + ' deleted');
-    loadData();
+    if (!confirm('Delete this item?')) return;
+    await fetch(`/api/${type}s/${id}`, { method: 'DELETE' });
+    showToast('Deleted'); loadData();
 }
 
 function openEdit(type, id) {
-    let item;
-    if (type === 'region') item = regions.find(r => r.id === id);
-    else if (type === 'tsd') item = tsds.find(t => t.id === id);
-    else if (type === 'product') item = products.find(p => p.id === id);
-    else if (type === 'tag') item = tags.find(t => t.id === id);
-    
+    const items = {region: regions, tsd: tsds, product: products, tag: tags}[type];
+    const item = items.find(i => i.id === id);
     if (!item) return;
-    
     document.getElementById('editType').value = type;
     document.getElementById('editItemId').value = id;
     document.getElementById('editName').value = item.name;
-    document.getElementById('editModalTitle').textContent = 'Edit ' + type.charAt(0).toUpperCase() + type.slice(1);
-    
-    // Show/hide color picker for tags
-    const colorGroup = document.getElementById('editColorGroup');
-    if (type === 'tag') {
-        colorGroup.style.display = 'block';
-        document.getElementById('editColor').value = item.color || 'accent';
-    } else {
-        colorGroup.style.display = 'none';
-    }
-    
+    document.getElementById('editModalTitle').textContent = 'Edit ' + type;
+    document.getElementById('editColorGroup').classList.toggle('hidden', type !== 'tag');
+    if (type === 'tag') document.getElementById('editColor').value = item.color || 'accent';
     openModal('editModal');
 }
 
@@ -518,402 +516,147 @@ async function saveEdit() {
     const type = document.getElementById('editType').value;
     const id = document.getElementById('editItemId').value;
     const name = document.getElementById('editName').value.trim();
-    
     if (!name) return;
-    
-    let url = '/api/' + type + 's/' + id;
-    let body = { name };
-    
-    if (type === 'tag') {
-        body.color = document.getElementById('editColor').value;
-    }
-    
-    const res = await fetch(url, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-    });
-    
-    if (res.ok) {
-        closeModal('editModal');
-        showToast(type.charAt(0).toUpperCase() + type.slice(1) + ' updated');
-        loadData();
-    } else {
-        showToast('Failed to save', 'error');
-    }
+    const body = type === 'tag' ? {name, color: document.getElementById('editColor').value} : {name};
+    await fetch(`/api/${type}s/${id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    closeModal('editModal'); showToast('Updated'); loadData();
 }
 
-function openModal(id) { document.getElementById(id).classList.add('active'); }
-function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+// AI Knowledge
+async function loadKnowledge() {
+    try {
+        const res = await fetch('/api/ai/knowledge');
+        knowledge = await res.json();
+        document.getElementById('knowledgeCount').textContent = knowledge.length;
+        renderKnowledge();
+        updateStepIndicators();
+    } catch (err) { console.error(err); }
+}
 
-document.querySelectorAll('.modal-overlay').forEach(o => {
-    o.addEventListener('click', e => { if (e.target === o) o.classList.remove('active'); });
-});
+function updateStepIndicators() {
+    const hasProducts = knowledge.some(k => k.category === 'products');
+    const hasObjections = knowledge.some(k => k.category === 'objections');
+    const hasTone = knowledge.some(k => k.category === 'tone');
+    
+    if (hasProducts) document.getElementById('step1Ind').classList.add('done');
+    if (knowledge.length >= 3) document.getElementById('step2Ind').classList.add('done');
+    if (hasObjections) document.getElementById('step3Ind').classList.add('done');
+    if (hasTone) document.getElementById('step4Ind').classList.add('done');
+    if (knowledge.length >= 5) document.getElementById('step5Ind').classList.add('done');
+}
 
-document.getElementById('newRegion').addEventListener('keydown', e => { if (e.key === 'Enter') addRegion(); });
-document.getElementById('newTsd').addEventListener('keydown', e => { if (e.key === 'Enter') addTsd(); });
-document.getElementById('newProduct').addEventListener('keydown', e => { if (e.key === 'Enter') addProduct(); });
-document.getElementById('newTag').addEventListener('keydown', e => { if (e.key === 'Enter') addTag(); });
+const categoryLabels = { products: '📦 Products', objections: '🛡️ Objections', faq: '❓ FAQ', tone: '🎯 Tone', general: '📋 General' };
 
-// AI Knowledge Management
-let knowledge = [];
-
-// Update training progress indicators
-function updateTrainingProgress() {
-    const products = knowledge.filter(k => k.category === 'products').length;
-    const objections = knowledge.filter(k => k.category === 'objections').length;
-    const tone = knowledge.filter(k => k.category === 'tone').length;
-    const total = knowledge.length;
-    
-    document.getElementById('knowledgeCount').textContent = total;
-    document.getElementById('trainingProgress').textContent = total > 0 ? `${total} items learned` : '';
-    
-    // Update step indicators
-    if (products > 0) {
-        document.getElementById('step1Status').innerHTML = '<span style="color: var(--accent);">✓</span>';
-        document.getElementById('step2Circle').style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-        document.getElementById('step2Circle').style.color = 'white';
+function renderKnowledge() {
+    const container = document.getElementById('knowledgeList');
+    if (!knowledge.length) {
+        container.innerHTML = '<div class="text-center text-muted" style="padding: 20px;">No knowledge yet</div>';
+        return;
     }
+    const grouped = {};
+    knowledge.forEach(k => { if (!grouped[k.category]) grouped[k.category] = []; grouped[k.category].push(k); });
     
-    if (total >= 3) {
-        document.getElementById('step2Status').innerHTML = '<span style="color: var(--accent);">✓</span>';
-        document.getElementById('step3Circle').style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-        document.getElementById('step3Circle').style.color = 'white';
-    }
-    
-    if (objections > 0) {
-        document.getElementById('step3Status').innerHTML = '<span style="color: var(--accent);">✓</span>';
-        document.getElementById('step4Circle').style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-        document.getElementById('step4Circle').style.color = 'white';
-    }
-    
-    if (tone > 0) {
-        document.getElementById('step4Status').innerHTML = '<span style="color: var(--accent);">✓</span>';
-        document.getElementById('step5Circle').style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-        document.getElementById('step5Circle').style.color = 'white';
-    }
+    container.innerHTML = Object.entries(grouped).map(([cat, items]) => `
+        <div style="margin-bottom: 16px;">
+            <div style="font-weight: 600; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 8px;">${categoryLabels[cat] || cat}</div>
+            ${items.map(k => `
+                <div class="tag-item mb-2">
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="font-weight: 500; font-size: 0.85rem;">${escapeHtml(k.title)}</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(k.content.substring(0, 60))}...</div>
+                    </div>
+                    <button onclick="editKnowledge(${k.id})">✎</button>
+                    <button onclick="deleteKnowledge(${k.id})">✕</button>
+                </div>
+            `).join('')}
+        </div>
+    `).join('');
 }
 
 async function scrapeWebsite() {
     const url = document.getElementById('scrapeUrl').value.trim();
-    if (!url) {
-        showToast('Please enter a URL', 'warning');
-        return;
-    }
+    if (!url) { showToast('Enter a URL', 'warning'); return; }
     
     const btn = document.getElementById('scrapeBtn');
     const status = document.getElementById('scrapeStatus');
-    
-    btn.disabled = true;
-    btn.textContent = '⏳ Importing...';
-    status.innerHTML = '<span style="color: var(--text-muted);">Fetching website and analyzing with AI... (30-60 seconds)</span>';
+    btn.disabled = true; btn.textContent = '⏳...';
+    status.innerHTML = '<span class="text-muted">Importing... (30-60s)</span>';
     
     try {
-        const res = await fetch('/api/ai/scrape', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url })
-        });
-        
+        const res = await fetch('/api/ai/scrape', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({url}) });
         const data = await res.json();
-        
-        if (data.error) {
-            status.innerHTML = `<span style="color: var(--error);">❌ ${data.error}</span>`;
-            showToast(data.error, 'error');
-        } else {
-            status.innerHTML = `<span style="color: var(--accent);">✅ Imported ${data.added} items from ${data.pages_scraped} pages!</span>`;
-            showToast(`AI learned ${data.added} things about your business!`);
-            loadKnowledge();
-        }
-    } catch (err) {
-        status.innerHTML = `<span style="color: var(--error);">❌ Failed to import</span>`;
-        showToast('Failed to import website', 'error');
-    } finally {
-        btn.disabled = false;
-        btn.textContent = '🔍 Import';
-    }
+        if (data.error) { status.innerHTML = `<span style="color:var(--error);">❌ ${data.error}</span>`; }
+        else { status.innerHTML = `<span style="color:var(--accent);">✅ Imported ${data.added} items!</span>`; loadKnowledge(); }
+    } catch (err) { status.innerHTML = '<span style="color:var(--error);">❌ Failed</span>'; }
+    finally { btn.disabled = false; btn.textContent = '🔍 Import'; }
 }
 
-function addSuggestedObjection(objection) {
-    document.getElementById('objectionTitle').value = objection;
+function addSuggestedObjection(text) {
+    document.getElementById('objectionTitle').value = text;
     document.getElementById('objectionResponse').focus();
 }
 
 async function addObjection() {
     const title = document.getElementById('objectionTitle').value.trim();
     const content = document.getElementById('objectionResponse').value.trim();
-    
-    if (!title || !content) {
-        showToast('Fill in both the objection and response', 'warning');
-        return;
-    }
-    
-    try {
-        const res = await fetch('/api/ai/knowledge', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                category: 'objections', 
-                title: `Objection: "${title}"`, 
-                content: `When a partner says "${title}", respond by: ${content}` 
-            })
-        });
-        
-        if (res.ok) {
-            document.getElementById('objectionTitle').value = '';
-            document.getElementById('objectionResponse').value = '';
-            showToast('Objection response added!');
-            loadKnowledge();
-        }
-    } catch (err) {
-        showToast('Failed to add', 'error');
-    }
-}
-
-function setTonePreset(preset) {
-    const textarea = document.getElementById('toneDescription');
-    
-    const presets = {
-        casual: `Keep it casual and friendly. Use first names. Be conversational like you're texting a colleague. Don't be overly formal or salesy. Use contractions (I'm, you're, we'll). Keep messages short and punchy. It's okay to use emojis sparingly.`,
-        professional: `Maintain a professional but warm tone. Use proper grammar and complete sentences. Address partners respectfully. Be clear and concise. Avoid slang. Focus on value and solutions. Keep it business-appropriate but not stiff.`,
-        consultative: `Take a consultative approach. Ask questions to understand their needs. Listen more than pitch. Reference specific challenges like "alert fatigue" or "staffing constraints". Position as a trusted advisor, not a salesperson. Focus on solving problems, not selling products.`
-    };
-    
-    textarea.value = presets[preset] || '';
-    
-    // Highlight selected
-    document.querySelectorAll('[id^="tone"]').forEach(btn => btn.classList.remove('btn-active'));
-    document.getElementById('tone' + preset.charAt(0).toUpperCase() + preset.slice(1))?.classList.add('btn-active');
+    if (!title || !content) { showToast('Fill both fields', 'warning'); return; }
+    await fetch('/api/ai/knowledge', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ category: 'objections', title: `"${title}"`, content }) });
+    document.getElementById('objectionTitle').value = '';
+    document.getElementById('objectionResponse').value = '';
+    showToast('Objection added!'); loadKnowledge();
 }
 
 async function analyzeMyStyle() {
     const btn = document.getElementById('analyzeStyleBtn');
     const status = document.getElementById('analyzeStatus');
-    
-    btn.disabled = true;
-    btn.textContent = '⏳ Analyzing...';
-    status.innerHTML = '<span style="color: var(--text-muted);">Reading your message history...</span>';
+    btn.disabled = true; btn.textContent = '⏳...';
+    status.innerHTML = '<span class="text-muted">Analyzing...</span>';
     
     try {
         const res = await fetch('/api/ai/analyze-style', { method: 'POST' });
         const data = await res.json();
-        
-        if (data.error) {
-            status.innerHTML = `<span style="color: var(--error);">❌ ${data.error}</span>`;
-            showToast(data.error, 'error');
-        } else {
-            status.innerHTML = `<span style="color: var(--accent);">✅ Analyzed ${data.messages_analyzed} messages!</span>`;
-            document.getElementById('toneDescription').value = data.style_guide;
-            showToast('AI learned your writing style!');
-            loadKnowledge();
-        }
-    } catch (err) {
-        status.innerHTML = `<span style="color: var(--error);">❌ Failed to analyze</span>`;
-        showToast('Failed to analyze', 'error');
-    } finally {
-        btn.disabled = false;
-        btn.textContent = '✨ Analyze My Messages';
-    }
+        if (data.error) { status.innerHTML = `<span style="color:var(--error);">❌ ${data.error}</span>`; }
+        else { status.innerHTML = `<span style="color:var(--accent);">✅ Learned from ${data.messages_analyzed} messages!</span>`; document.getElementById('toneDescription').value = data.style_guide; loadKnowledge(); }
+    } catch (err) { status.innerHTML = '<span style="color:var(--error);">❌ Failed</span>'; }
+    finally { btn.disabled = false; btn.textContent = '✨ Analyze My Messages'; }
 }
 
-async function learnFromExamples() {
-    const examples = document.getElementById('exampleMessages').value.trim();
-    
-    if (!examples || examples.length < 50) {
-        showToast('Please paste at least a few example messages', 'warning');
-        return;
-    }
-    
-    const btn = document.getElementById('learnExamplesBtn');
-    btn.disabled = true;
-    btn.textContent = '⏳ Learning...';
-    
-    try {
-        const res = await fetch('/api/ai/learn-examples', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ examples })
-        });
-        const data = await res.json();
-        
-        if (data.error) {
-            showToast(data.error, 'error');
-        } else {
-            document.getElementById('toneDescription').value = data.style_guide;
-            document.getElementById('exampleMessages').value = '';
-            showToast('AI learned from your examples!');
-            loadKnowledge();
-        }
-    } catch (err) {
-        showToast('Failed to learn from examples', 'error');
-    } finally {
-        btn.disabled = false;
-        btn.textContent = '🧠 Learn From These';
-    }
+function setTonePreset(preset) {
+    const presets = {
+        casual: 'Keep it casual and friendly. Use first names. Be conversational. Use contractions. Short and punchy messages.',
+        professional: 'Professional but warm. Proper grammar. Clear and concise. Business-appropriate.',
+        consultative: 'Consultative approach. Ask questions. Position as advisor, not salesperson.'
+    };
+    document.getElementById('toneDescription').value = presets[preset] || '';
 }
 
 async function saveTone() {
     const content = document.getElementById('toneDescription').value.trim();
-    
-    if (!content) {
-        showToast('Please describe your preferred tone', 'warning');
-        return;
-    }
-    
-    try {
-        // Check if tone already exists
-        const existingTone = knowledge.find(k => k.category === 'tone' && k.title === 'Communication Style');
-        
-        if (existingTone) {
-            await fetch(`/api/ai/knowledge/${existingTone.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    category: 'tone', 
-                    title: 'Communication Style', 
-                    content: content 
-                })
-            });
-        } else {
-            await fetch('/api/ai/knowledge', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    category: 'tone', 
-                    title: 'Communication Style', 
-                    content: content 
-                })
-            });
-        }
-        
-        showToast('Communication style saved!');
-        loadKnowledge();
-    } catch (err) {
-        showToast('Failed to save', 'error');
-    }
-}
-
-async function loadKnowledge() {
-    try {
-        const res = await fetch('/api/ai/knowledge');
-        knowledge = await res.json();
-        renderKnowledge();
-        updateTrainingProgress();
-        
-        // Pre-fill tone if exists
-        const existingTone = knowledge.find(k => k.category === 'tone' && k.title === 'Communication Style');
-        if (existingTone) {
-            document.getElementById('toneDescription').value = existingTone.content;
-        }
-    } catch (err) {
-        console.error('Failed to load knowledge:', err);
-    }
-}
-
-const categoryLabels = {
-    products: '📦 Products & Services',
-    objections: '🛡️ Objection Handling',
-    faq: '❓ FAQ',
-    tone: '🎯 Communication Style',
-    general: '📋 General Info'
-};
-
-const categoryColors = {
-    products: 'var(--accent)',
-    objections: 'var(--warning)',
-    faq: 'var(--text-secondary)',
-    tone: '#667eea',
-    general: 'var(--text-muted)'
-};
-
-function renderKnowledge() {
-    const container = document.getElementById('knowledgeList');
-    
-    if (knowledge.length === 0) {
-        container.innerHTML = `
-            <div style="text-align: center; padding: 20px; color: var(--text-muted);">
-                <p>No knowledge added yet.</p>
-                <p style="font-size: 0.8rem;">Use the Quick Add form below to start training your AI.</p>
-            </div>
-        `;
-        return;
-    }
-    
-    // Group by category
-    const grouped = {};
-    knowledge.forEach(k => {
-        if (!grouped[k.category]) grouped[k.category] = [];
-        grouped[k.category].push(k);
-    });
-    
-    let html = '';
-    for (const [cat, items] of Object.entries(grouped)) {
-        html += `
-            <div style="margin-bottom: 16px;">
-                <div style="font-size: 0.8rem; font-weight: 600; color: ${categoryColors[cat] || 'var(--text-secondary)'}; margin-bottom: 8px;">
-                    ${categoryLabels[cat] || cat}
-                </div>
-        `;
-        items.forEach(k => {
-            html += `
-                <div class="tag-item" style="margin-bottom: 4px;">
-                    <div style="flex: 1;">
-                        <div style="font-weight: 500; font-size: 0.85rem;">${escapeHtml(k.title)}</div>
-                        <div style="font-size: 0.75rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 250px;">
-                            ${escapeHtml(k.content.substring(0, 80))}${k.content.length > 80 ? '...' : ''}
-                        </div>
-                    </div>
-                    <button onclick="editKnowledge(${k.id})" style="margin-right: 4px;">✎</button>
-                    <button onclick="deleteKnowledge(${k.id})">✕</button>
-                </div>
-            `;
-        });
-        html += '</div>';
-    }
-    
-    container.innerHTML = html;
+    if (!content) { showToast('Describe your style', 'warning'); return; }
+    const existing = knowledge.find(k => k.category === 'tone' && k.title === 'Communication Style');
+    if (existing) { await fetch(`/api/ai/knowledge/${existing.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ category: 'tone', title: 'Communication Style', content }) }); }
+    else { await fetch('/api/ai/knowledge', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ category: 'tone', title: 'Communication Style', content }) }); }
+    showToast('Style saved!'); loadKnowledge();
 }
 
 async function quickAddKnowledge() {
     const category = document.getElementById('quickCategory').value;
     const title = document.getElementById('quickTitle').value.trim();
     const content = document.getElementById('quickContent').value.trim();
-    
-    if (!title || !content) {
-        showToast('Please fill in title and content', 'warning');
-        return;
-    }
-    
-    try {
-        const res = await fetch('/api/ai/knowledge', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ category, title, content })
-        });
-        
-        if (res.ok) {
-            document.getElementById('quickTitle').value = '';
-            document.getElementById('quickContent').value = '';
-            showToast('Knowledge added! AI is now smarter 🧠');
-            loadKnowledge();
-        } else {
-            showToast('Failed to add knowledge', 'error');
-        }
-    } catch (err) {
-        showToast('Failed to add knowledge', 'error');
-    }
+    if (!title || !content) { showToast('Fill all fields', 'warning'); return; }
+    await fetch('/api/ai/knowledge', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ category, title, content }) });
+    document.getElementById('quickTitle').value = '';
+    document.getElementById('quickContent').value = '';
+    showToast('Knowledge added!'); loadKnowledge();
 }
 
 function editKnowledge(id) {
     const item = knowledge.find(k => k.id === id);
     if (!item) return;
-    
     document.getElementById('editKnowledgeId').value = id;
     document.getElementById('editKnowledgeCategory').value = item.category;
     document.getElementById('editKnowledgeTitleInput').value = item.title;
     document.getElementById('editKnowledgeContent').value = item.content;
-    document.getElementById('editKnowledgeTitle').textContent = 'Edit: ' + item.title;
-    
     openModal('editKnowledgeModal');
 }
 
@@ -922,205 +665,21 @@ async function saveKnowledge() {
     const category = document.getElementById('editKnowledgeCategory').value;
     const title = document.getElementById('editKnowledgeTitleInput').value.trim();
     const content = document.getElementById('editKnowledgeContent').value.trim();
-    
-    if (!title || !content) {
-        showToast('Please fill in all fields', 'warning');
-        return;
-    }
-    
-    try {
-        const res = await fetch(`/api/ai/knowledge/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ category, title, content })
-        });
-        
-        if (res.ok) {
-            closeModal('editKnowledgeModal');
-            showToast('Knowledge updated');
-            loadKnowledge();
-        } else {
-            showToast('Failed to save', 'error');
-        }
-    } catch (err) {
-        showToast('Failed to save', 'error');
-    }
+    if (!title || !content) { showToast('Fill all fields', 'warning'); return; }
+    await fetch(`/api/ai/knowledge/${id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ category, title, content }) });
+    closeModal('editKnowledgeModal'); showToast('Updated'); loadKnowledge();
 }
 
 async function deleteKnowledge(id) {
-    if (!confirm('Delete this knowledge item?')) return;
-    
-    try {
-        await fetch(`/api/ai/knowledge/${id}`, { method: 'DELETE' });
-        showToast('Knowledge deleted');
-        loadKnowledge();
-    } catch (err) {
-        showToast('Failed to delete', 'error');
-    }
+    if (!confirm('Delete this?')) return;
+    await fetch(`/api/ai/knowledge/${id}`, { method: 'DELETE' });
+    showToast('Deleted'); loadKnowledge();
 }
 
-// Guided Step Functions
-function addSuggestedObjection(objection) {
-    document.getElementById('objectionTitle').value = objection;
-    document.getElementById('objectionResponse').focus();
-}
-
-async function addObjection() {
-    const title = document.getElementById('objectionTitle').value.trim();
-    const content = document.getElementById('objectionResponse').value.trim();
-    
-    if (!title || !content) {
-        showToast('Please fill in both objection and response', 'warning');
-        return;
-    }
-    
-    try {
-        const res = await fetch('/api/ai/knowledge', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                category: 'objections', 
-                title: 'Objection: ' + title, 
-                content: 'When they say "' + title + '", respond: ' + content 
-            })
-        });
-        
-        if (res.ok) {
-            document.getElementById('objectionTitle').value = '';
-            document.getElementById('objectionResponse').value = '';
-            showToast('Objection handling added!');
-            loadKnowledge();
-            updateProgress();
-        }
-    } catch (err) {
-        showToast('Failed to add', 'error');
-    }
-}
-
-function setTonePreset(preset) {
-    const textarea = document.getElementById('toneDescription');
-    const presets = {
-        casual: `Keep messages casual and friendly. Use first names. Okay to use occasional emojis. Write like you're texting a colleague, not writing a formal email. Keep it short and punchy. Ask questions to engage.`,
-        professional: `Keep a professional, polished tone. Use proper grammar and punctuation. Be courteous but not stiff. Focus on business value and ROI. Avoid slang and emojis. Be direct and respect their time.`,
-        consultative: `Take an advisory, consultative approach. Ask questions to understand their challenges before pitching. Share relevant insights and industry knowledge. Position yourself as a trusted advisor, not just a salesperson. Be genuinely helpful.`
-    };
-    textarea.value = presets[preset] || '';
-    
-    // Highlight selected button
-    document.querySelectorAll('#toneCasual, #toneProfessional, #toneConsultative').forEach(btn => {
-        btn.style.border = '1px solid var(--border)';
-    });
-    document.getElementById('tone' + preset.charAt(0).toUpperCase() + preset.slice(1)).style.border = '2px solid var(--accent)';
-}
-
-async function saveTone() {
-    const content = document.getElementById('toneDescription').value.trim();
-    
-    if (!content) {
-        showToast('Please describe your preferred communication style', 'warning');
-        return;
-    }
-    
-    // Check if tone already exists
-    const existing = knowledge.find(k => k.category === 'tone' && k.title === 'Communication Style');
-    
-    try {
-        if (existing) {
-            await fetch(`/api/ai/knowledge/${existing.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    category: 'tone', 
-                    title: 'Communication Style', 
-                    content: content 
-                })
-            });
-        } else {
-            await fetch('/api/ai/knowledge', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    category: 'tone', 
-                    title: 'Communication Style', 
-                    content: content 
-                })
-            });
-        }
-        
-        showToast('Style preferences saved!');
-        loadKnowledge();
-        updateProgress();
-    } catch (err) {
-        showToast('Failed to save', 'error');
-    }
-}
-
-function updateProgress() {
-    const count = knowledge.length;
-    document.getElementById('knowledgeCount').textContent = count;
-    
-    // Update progress bar (target: 20 items = 100%)
-    const percentage = Math.min(count * 5, 100);
-    const progressEl = document.getElementById('trainingProgress');
-    if (progressEl) {
-        progressEl.textContent = count > 0 ? `${count} items trained` : '';
-    }
-    
-    // Update step circles based on category counts
-    const hasProducts = knowledge.some(k => k.category === 'products' || k.category === 'general');
-    const hasObjections = knowledge.some(k => k.category === 'objections');
-    const hasTone = knowledge.some(k => k.category === 'tone');
-    
-    // Step 1 (import) - check if any knowledge exists
-    if (count > 0) {
-        const step1 = document.getElementById('step1Status');
-        if (step1) step1.innerHTML = '<span style="color: var(--accent);">✓</span>';
-    }
-    
-    // Step 2 (review) - always available after step 1
-    if (count > 0) {
-        const circle2 = document.getElementById('step2Circle');
-        if (circle2) circle2.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-        if (circle2) circle2.style.color = 'white';
-    }
-    
-    // Step 3 (objections)
-    if (hasObjections) {
-        const step3 = document.getElementById('step3Status');
-        if (step3) step3.innerHTML = '<span style="color: var(--accent);">✓</span>';
-        const circle3 = document.getElementById('step3Circle');
-        if (circle3) circle3.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-        if (circle3) circle3.style.color = 'white';
-    }
-    
-    // Step 4 (tone)
-    if (hasTone) {
-        const step4 = document.getElementById('step4Status');
-        if (step4) step4.innerHTML = '<span style="color: var(--accent);">✓</span>';
-        const circle4 = document.getElementById('step4Circle');
-        if (circle4) circle4.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-        if (circle4) circle4.style.color = 'white';
-        
-        // Pre-fill tone textarea
-        const toneItem = knowledge.find(k => k.category === 'tone' && k.title === 'Communication Style');
-        if (toneItem) {
-            document.getElementById('toneDescription').value = toneItem.content;
-        }
-    }
-}
-
-// Override loadKnowledge to also update progress
-const originalLoadKnowledge = loadKnowledge;
-async function loadKnowledge() {
-    try {
-        const res = await fetch('/api/ai/knowledge');
-        knowledge = await res.json();
-        renderKnowledge();
-        updateProgress();
-    } catch (err) {
-        console.error('Failed to load knowledge:', err);
-    }
-}
+document.getElementById('newRegion').addEventListener('keydown', e => { if (e.key === 'Enter') addRegion(); });
+document.getElementById('newTsd').addEventListener('keydown', e => { if (e.key === 'Enter') addTsd(); });
+document.getElementById('newProduct').addEventListener('keydown', e => { if (e.key === 'Enter') addProduct(); });
+document.getElementById('newTag').addEventListener('keydown', e => { if (e.key === 'Enter') addTag(); });
 
 loadData();
 loadKnowledge();

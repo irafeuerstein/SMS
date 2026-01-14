@@ -129,71 +129,134 @@
         min-width: 22px;
         text-align: center;
     }
-    .ai-suggestions {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        margin-bottom: 8px;
-        padding: 8px;
-        background: var(--bg-dark);
-        border-radius: 8px;
-        border: 1px solid rgba(0, 212, 170, 0.3);
+    .ai-panel {
+        background: var(--bg-hover);
+        border-radius: var(--radius-md);
+        padding: 12px;
+        margin-bottom: 10px;
+        border: 1px solid rgba(102, 126, 234, 0.3);
     }
-    .ai-suggestions-header {
+    .ai-panel-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 4px;
-    }
-    .ai-suggestions-title {
-        font-size: 0.7rem;
-        color: var(--accent);
+        font-size: 0.8rem;
         font-weight: 600;
+        color: #667eea;
+        margin-bottom: 10px;
+    }
+    .ai-panel-close {
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        cursor: pointer;
+        font-size: 1rem;
+    }
+    .ai-compose-row {
+        display: flex;
+        gap: 8px;
+    }
+    .ai-suggestions {
+        margin-bottom: 10px;
     }
     .ai-suggestion-btn {
         background: var(--bg-card);
         border: 1px solid var(--border);
         color: var(--text-primary);
         padding: 8px 12px;
-        border-radius: 8px;
+        border-radius: var(--radius-sm);
         font-size: 0.8rem;
         text-align: left;
         cursor: pointer;
-        transition: all 0.2s;
+        width: 100%;
+        margin-bottom: 6px;
+        transition: all 0.15s ease;
     }
-    .ai-suggestion-btn:hover {
+    .ai-suggestion-btn:last-child { margin-bottom: 0; }
+    .ai-suggestion-btn:active {
         border-color: var(--accent);
-        background: var(--bg-hover);
+        background: var(--accent-dim);
     }
-    .ai-compose-bar {
+    .compose-main {
         display: flex;
+        align-items: flex-end;
         gap: 8px;
-        margin-bottom: 8px;
     }
-    .ai-compose-input {
+    .compose-actions-left {
+        display: flex;
+        gap: 2px;
+    }
+    .compose-action {
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        width: 36px;
+        height: 36px;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s ease;
+    }
+    .compose-action:active {
+        background: var(--bg-hover);
+        color: var(--accent);
+    }
+    .compose-action.active {
+        color: #667eea;
+        background: var(--ai-dim);
+    }
+    .compose-input-wrap {
         flex: 1;
-        background: var(--bg-dark);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 8px 12px;
-        color: var(--text-primary);
-        font-size: 0.8rem;
+        position: relative;
     }
-    .ai-compose-input:focus {
+    .compose-textarea {
+        width: 100%;
+        background: var(--bg-primary);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        padding: 10px 14px;
+        padding-right: 50px;
+        color: var(--text-primary);
+        font-size: 0.9rem;
+        font-family: inherit;
+        resize: none;
+        max-height: 120px;
+        line-height: 1.4;
+    }
+    .compose-textarea:focus {
         outline: none;
         border-color: var(--accent);
     }
-    .ai-btn {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border: none;
-        color: white;
-        padding: 8px 12px;
-        border-radius: 8px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        cursor: pointer;
+    .compose-textarea::placeholder {
+        color: var(--text-muted);
     }
-    .ai-btn:disabled {
+    .char-count {
+        position: absolute;
+        right: 10px;
+        bottom: 8px;
+        font-size: 0.65rem;
+        color: var(--text-muted);
+    }
+    .compose-send {
+        background: var(--accent);
+        border: none;
+        color: var(--bg-primary);
+        width: 44px;
+        height: 44px;
+        border-radius: var(--radius-md);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s ease;
+        flex-shrink: 0;
+    }
+    .compose-send:active {
+        transform: scale(0.95);
+    }
+    .compose-send:disabled {
         opacity: 0.5;
     }
     .sentiment-badge {
@@ -257,55 +320,51 @@
 
 <div class="compose-bar hidden" id="composeBar">
     <div class="compose-bar-inner">
-        <div style="flex: 1;">
-            <!-- AI Suggestions -->
+        <!-- AI Panel (Expandable) -->
+        <div class="ai-panel hidden" id="aiPanel">
+            <div class="ai-panel-header">
+                <span>✨ AI Assistant</span>
+                <button onclick="toggleAiPanel()" class="ai-panel-close">✕</button>
+            </div>
             <div class="ai-suggestions hidden" id="aiSuggestions">
-                <div class="ai-suggestions-header">
-                    <span class="ai-suggestions-title">✨ AI Suggestions</span>
-                    <button onclick="hideAiSuggestions()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;">✕</button>
-                </div>
+                <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 6px;">Suggested replies:</div>
                 <div id="aiSuggestionsList"></div>
             </div>
-            
-            <!-- AI Compose -->
-            <div class="ai-compose-bar">
-                <input type="text" class="ai-compose-input" id="aiComposeInput" placeholder="Ask AI to write... (e.g., 'follow up about MxDR pricing')" onkeydown="if(event.key==='Enter')generateAiMessage()">
-                <button class="ai-btn" onclick="generateAiMessage()" id="aiComposeBtn">✨ Write</button>
-                <button class="ai-btn" onclick="getAiSuggestions()" id="aiSuggestBtn" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">💡 Suggest</button>
+            <div class="ai-compose-row">
+                <input type="text" class="form-input" id="aiComposeInput" placeholder="Ask AI to write..." style="font-size: 0.85rem; padding: 10px 12px;" onkeydown="if(event.key==='Enter')generateAiMessage()">
+                <button class="btn btn-sm btn-ai" onclick="generateAiMessage()" id="aiComposeBtn">Write</button>
             </div>
-            
-            <!-- Quick Replies -->
-            <div class="quick-replies" id="quickReplies">
-                <button class="quick-reply" onclick="insertQuickReply('Thanks!')">Thanks!</button>
-                <button class="quick-reply" onclick="insertQuickReply('Let me check on that')">Let me check</button>
-                <button class="quick-reply" onclick="insertQuickReply('Can we schedule a call?')">Schedule call?</button>
-                <button class="quick-reply" onclick="insertInboxVariable('first_name')" style="color: var(--accent);">+ Name</button>
-            </div>
-            <div id="mediaPreviewContainer"></div>
-            <div id="charCountInbox" style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px; text-align: right;"></div>
-            <div style="display: flex; gap: 8px; align-items: flex-end;">
-                <button class="compose-btn" onclick="document.getElementById('mediaInput').click()" title="Attach file">
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        </div>
+        
+        <!-- Media Preview -->
+        <div id="mediaPreviewContainer"></div>
+        
+        <!-- Main Compose Row -->
+        <div class="compose-main">
+            <div class="compose-actions-left">
+                <button class="compose-action" onclick="toggleAiPanel()" title="AI Assistant" id="aiToggleBtn">
+                    <span style="font-size: 1rem;">✨</span>
+                </button>
+                <button class="compose-action" onclick="document.getElementById('mediaInput').click()" title="Attach">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/>
                     </svg>
                 </button>
-                <button class="compose-btn" onclick="startRecording('audio')" title="Voice memo">
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <button class="compose-action" onclick="startRecording('audio')" title="Voice">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>
                     </svg>
                 </button>
-                <button class="compose-btn" onclick="startRecording('video')" title="Video message">
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-                    </svg>
-                </button>
-                <textarea class="compose-input" id="messageInput" placeholder="Type a message..." rows="1" oninput="updateCharCountInbox()" onkeydown="handleKeydown(event)"></textarea>
-                <button class="compose-btn send" onclick="sendMessage()" id="sendMsgBtn">
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
-                    </svg>
-                </button>
             </div>
+            <div class="compose-input-wrap">
+                <textarea class="compose-textarea" id="messageInput" placeholder="Type a message..." rows="1" oninput="updateCharCountInbox(); autoResize(this)" onkeydown="handleKeydown(event)"></textarea>
+                <span class="char-count" id="charCountInbox"></span>
+            </div>
+            <button class="compose-send" onclick="sendMessage()" id="sendMsgBtn">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="22" height="22">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+                </svg>
+            </button>
         </div>
     </div>
     <input type="file" id="mediaInput" accept="image/*,video/*,audio/*" style="display: none;" onchange="handleMediaSelect(event)">
@@ -982,6 +1041,24 @@ function goToMessage(partnerId) {
     openConversation(partnerId);
 }
 
+// Compose bar functions
+function toggleAiPanel() {
+    const panel = document.getElementById('aiPanel');
+    const btn = document.getElementById('aiToggleBtn');
+    panel.classList.toggle('hidden');
+    btn.classList.toggle('active');
+    
+    // Auto-get suggestions when opening
+    if (!panel.classList.contains('hidden') && currentPartnerId) {
+        getAiSuggestions();
+    }
+}
+
+function autoResize(textarea) {
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+}
+
 // Utility functions
 function getInitials(name) { return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase(); }
 
@@ -1010,35 +1087,32 @@ document.getElementById('messageList')?.addEventListener('scroll', function() {
 async function getAiSuggestions() {
     if (!currentPartnerId) return;
     
-    const btn = document.getElementById('aiSuggestBtn');
-    btn.disabled = true;
-    btn.textContent = '⏳...';
+    const suggestionsEl = document.getElementById('aiSuggestions');
+    const container = document.getElementById('aiSuggestionsList');
+    container.innerHTML = '<div class="text-center text-muted" style="padding: 10px;"><div class="spinner" style="width:20px;height:20px;border-width:2px;"></div></div>';
+    suggestionsEl.classList.remove('hidden');
     
     try {
         const res = await fetch(`/api/ai/suggestions/${currentPartnerId}`, { method: 'POST' });
         const data = await res.json();
         
         if (data.error) {
-            showToast(data.error, 'error');
+            container.innerHTML = `<div class="text-muted" style="font-size: 0.8rem;">${data.error}</div>`;
             return;
         }
         
-        const container = document.getElementById('aiSuggestionsList');
         container.innerHTML = data.suggestions.map(s => 
             `<button class="ai-suggestion-btn" onclick="useAiSuggestion(this)">${escapeHtml(s)}</button>`
         ).join('');
-        
-        document.getElementById('aiSuggestions').classList.remove('hidden');
     } catch (err) {
-        showToast('Failed to get suggestions', 'error');
-    } finally {
-        btn.disabled = false;
-        btn.textContent = '💡 Suggest';
+        container.innerHTML = '<div class="text-muted" style="font-size: 0.8rem;">Failed to load</div>';
     }
 }
 
 function useAiSuggestion(btn) {
     document.getElementById('messageInput').value = btn.textContent;
+    toggleAiPanel(); // Close the AI panel
+    updateCharCountInbox();
     updateCharCountInbox();
     hideAiSuggestions();
 }
