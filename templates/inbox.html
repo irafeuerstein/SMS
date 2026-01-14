@@ -34,7 +34,7 @@
                 <button class="quick-reply" onclick="insertQuickReply('Thanks!')">Thanks!</button>
                 <button class="quick-reply" onclick="insertQuickReply('Let me check on that')">Let me check</button>
                 <button class="quick-reply" onclick="insertQuickReply('Can we schedule a call?')">Schedule call?</button>
-                <button class="quick-reply" onclick="insertQuickReply('I\\'ll follow up soon')">Follow up soon</button>
+                <button class="quick-reply" onclick="insertInboxVariable('{{first_name}}')" style="color: var(--accent);">+ Name</button>
             </div>
             <div id="mediaPreviewContainer"></div>
             <div id="charCountInbox" style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px; text-align: right;"></div>
@@ -124,6 +124,17 @@ function insertQuickReply(text) {
     const input = document.getElementById('messageInput');
     input.value = text;
     input.focus();
+    updateCharCountInbox();
+}
+
+function insertInboxVariable(variable) {
+    const input = document.getElementById('messageInput');
+    const start = input.selectionStart;
+    const end = input.selectionEnd;
+    const text = input.value;
+    input.value = text.substring(0, start) + variable + text.substring(end);
+    input.focus();
+    input.selectionStart = input.selectionEnd = start + variable.length;
     updateCharCountInbox();
 }
 
