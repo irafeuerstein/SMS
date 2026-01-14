@@ -66,14 +66,14 @@
         </div>
         
         <div class="form-group">
-            <textarea class="form-textarea" id="messageText" rows="4" placeholder="Hey {{first_name}}, wanted to reach out about..." oninput="updateCharCount()"></textarea>
+            <textarea class="form-textarea" id="messageText" rows="4" placeholder="Hey [first_name], wanted to reach out about..." oninput="updateCharCount()"></textarea>
             <div style="display: flex; justify-content: space-between; align-items: start; margin-top: 6px; flex-wrap: wrap; gap: 6px;">
                 <div style="display: flex; flex-wrap: wrap; gap: 4px;">
-                    <button type="button" class="btn btn-sm btn-ghost" style="padding: 4px 8px; font-size: 0.65rem;" onclick="insertVariable('{{first_name}}')">+ First Name</button>
-                    <button type="button" class="btn btn-sm btn-ghost" style="padding: 4px 8px; font-size: 0.65rem;" onclick="insertVariable('{{name}}')">+ Full Name</button>
-                    <button type="button" class="btn btn-sm btn-ghost" style="padding: 4px 8px; font-size: 0.65rem;" onclick="insertVariable('{{company}}')">+ Company</button>
-                    <button type="button" class="btn btn-sm btn-ghost" style="padding: 4px 8px; font-size: 0.65rem;" onclick="insertVariable('{{region}}')">+ Region</button>
-                    <button type="button" class="btn btn-sm btn-ghost" style="padding: 4px 8px; font-size: 0.65rem;" onclick="insertVariable('{{tsd}}')">+ TSD</button>
+                    <button type="button" class="btn btn-sm btn-ghost" style="padding: 4px 8px; font-size: 0.65rem;" onclick="insertVariable('first_name')">+ First Name</button>
+                    <button type="button" class="btn btn-sm btn-ghost" style="padding: 4px 8px; font-size: 0.65rem;" onclick="insertVariable('name')">+ Full Name</button>
+                    <button type="button" class="btn btn-sm btn-ghost" style="padding: 4px 8px; font-size: 0.65rem;" onclick="insertVariable('company')">+ Company</button>
+                    <button type="button" class="btn btn-sm btn-ghost" style="padding: 4px 8px; font-size: 0.65rem;" onclick="insertVariable('region')">+ Region</button>
+                    <button type="button" class="btn btn-sm btn-ghost" style="padding: 4px 8px; font-size: 0.65rem;" onclick="insertVariable('tsd')">+ TSD</button>
                 </div>
                 <div id="charCount" style="font-size: 0.75rem; color: var(--text-muted);">0/160 (1 segment)</div>
             </div>
@@ -201,7 +201,8 @@ async function loadData() {
     }
 }
 
-function insertVariable(variable) {
+function insertVariable(varName) {
+    const variable = String.fromCharCode(123, 123) + varName + String.fromCharCode(125, 125);
     const textarea = document.getElementById('messageText');
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
