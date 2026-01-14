@@ -410,7 +410,12 @@
 </main>
 
 <div class="compose-bar hidden" id="composeBar">
-    <div class="compose-bar-inner">
+    <!-- Opted Out Message -->
+    <div id="optedOutMessage" class="hidden" style="text-align: center; padding: 16px; color: var(--error);">
+        ⚠️ This partner has opted out of messages
+    </div>
+    
+    <div class="compose-bar-inner" id="composeBarInner">
         <!-- AI SDR Draft Box -->
         <div class="ai-draft-box hidden" id="aiDraftBox">
             <div class="ai-draft-header">
@@ -714,13 +719,19 @@ async function openConversation(partnerId) {
     document.getElementById('searchBtn').classList.add('hidden');
     document.getElementById('headerTitle').textContent = currentPartner.name || currentPartner.full_name;
     
-    // Handle opted out
+    // Handle opted out - show message instead of compose bar content
+    const optedOutMsg = document.getElementById('optedOutMessage');
+    const composeInner = document.getElementById('composeBarInner');
+    
     if (currentPartner.opted_out) {
-        document.getElementById('composeBar').innerHTML = `
-            <div style="text-align: center; padding: 16px; color: var(--error);">
-                ⚠️ This partner has opted out of messages
-            </div>
-        `;
+        if (optedOutMsg) optedOutMsg.classList.remove('hidden');
+        if (composeInner) composeInner.classList.add('hidden');
+    } else {
+        if (optedOutMsg) optedOutMsg.classList.add('hidden');
+        if (composeInner) composeInner.classList.remove('hidden');
+        // Reset draft box visibility
+        const draftBox = document.getElementById('aiDraftBox');
+        if (draftBox) draftBox.classList.add('hidden');
     }
     
     renderChatHeader();
