@@ -9,7 +9,11 @@
         </svg>
     </button>
     <h1 id="headerTitle">Inbox</h1>
-    <div style="width: 40px;"></div>
+    <button class="header-btn" id="searchBtn" onclick="openModal('searchModal')">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="24" height="24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+        </svg>
+    </button>
 </header>
 
 <main class="content" id="conversationsView">
@@ -73,6 +77,19 @@
             <button class="btn btn-secondary" onclick="cancelRecording()" style="flex: 1;">Cancel</button>
             <button class="btn" onclick="stopRecording()" style="flex: 1;">Stop & Attach</button>
         </div>
+    </div>
+</div>
+
+<!-- Search Modal -->
+<div class="modal-overlay" id="searchModal">
+    <div class="modal">
+        <div class="modal-handle"></div>
+        <h2 class="modal-title">Search Messages</h2>
+        <div class="form-group">
+            <input type="text" class="form-input" id="searchInput" placeholder="Search messages..." oninput="debounceSearch()">
+        </div>
+        <div id="searchResults" style="max-height: 300px; overflow-y: auto;"></div>
+        <button class="btn btn-secondary btn-block mt-4" onclick="closeModal('searchModal')">Close</button>
     </div>
 </div>
 {% endblock %}
@@ -231,11 +248,22 @@ function renderMessages(messages) {
         <div class="message ${m.direction}">
             ${m.media_url ? renderMedia(m.media_url, m.media_type) : ''}
             ${m.body ? `<div>${escapeHtml(m.body)}</div>` : ''}
-            <div class="message-time">${formatMessageTime(m.created_at)}</div>
+            <div class="message-time">
+                ${formatMessageTime(m.created_at)}
+                ${m.direction === 'outbound' ? getStatusIcon(m.status) : ''}
+            </div>
         </div>
     `).join('');
     
     container.scrollTop = container.scrollHeight;
+}
+
+function getStatusIcon(status) {
+    if (status === 'delivered') return ' <span style="color: var(--accent);">✓✓</span>';
+    if (status === 'sent') return ' <span style="color: var(--text-muted);">✓</span>';
+    if (status === 'failed' || status === 'undelivered') return ' <span style="color: var(--error);">✕</span>';
+    if (status === 'queued' || status === 'sending') return ' <span style="color: var(--text-muted);">⏳</span>';
+    return '';
 }
 
 function renderMedia(url, type) {
@@ -434,6 +462,57 @@ function formatTime(iso) {
 function formatMessageTime(iso) { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
 function openModal(id) { document.getElementById(id).classList.add('active'); }
 function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+// Message Search
+let searchTimeout = null;
+
+function debounceSearch() {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(performSearch, 300);
+}
+
+async function performSearch() {
+    const query = document.getElementById('searchInput').value.trim();
+    const resultsEl = document.getElementById('searchResults');
+    
+    if (query.length < 2) {
+        resultsEl.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">Type at least 2 characters</div>';
+        return;
+    }
+    
+    resultsEl.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    
+    try {
+        const res = await fetch(`/api/messages/search?q=${encodeURIComponent(query)}`);
+        const results = await res.json();
+        
+        if (results.length === 0) {
+            resultsEl.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No messages found</div>';
+            return;
+        }
+        
+        resultsEl.innerHTML = results.map(r => `
+            <div class="convo-item" onclick="goToMessage(${r.partner_id})" style="margin-bottom: 8px;">
+                <div class="convo-avatar">${getInitials(r.partner_name)}</div>
+                <div class="convo-content">
+                    <div class="convo-name">${escapeHtml(r.partner_name)}</div>
+                    <div class="convo-preview">${r.direction === 'inbound' ? '← ' : '→ '}${escapeHtml(r.body?.substring(0, 50) || '')}${r.body?.length > 50 ? '...' : ''}</div>
+                </div>
+                <div class="convo-meta">
+                    <div class="convo-time">${formatTime(r.created_at)}</div>
+                </div>
+            </div>
+        `).join('');
+    } catch (err) {
+        resultsEl.innerHTML = '<div style="text-align: center; color: var(--error); padding: 20px;">Search failed</div>';
+    }
+}
+
+function goToMessage(partnerId) {
+    closeModal('searchModal');
+    document.getElementById('searchInput').value = '';
+    openConversation(partnerId);
+}
 
 loadConversations();
 </script>

@@ -56,6 +56,12 @@ partner_products = db.Table('partner_products',
     db.Column('product_id', db.Integer, db.ForeignKey('product.id'), primary_key=True)
 )
 
+# Association table for partner tags
+partner_tags = db.Table('partner_tags',
+    db.Column('partner_id', db.Integer, db.ForeignKey('partner.id'), primary_key=True),
+    db.Column('tag_id', db.Integer, db.ForeignKey('tag.id'), primary_key=True)
+)
+
 # Models
 class Partner(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -73,6 +79,7 @@ class Partner(db.Model):
     region = db.relationship('Region', backref='partners')
     tsd = db.relationship('TSD', backref='partners')
     products = db.relationship('Product', secondary=partner_products, backref='partners')
+    tags = db.relationship('Tag', secondary=partner_tags, backref='partners')
     messages = db.relationship('Message', backref='partner', lazy=True)
     
     @property
@@ -84,6 +91,12 @@ class Partner(db.Model):
     @property
     def is_new(self):
         return self.last_contacted is None
+
+class Tag(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), nullable=False, unique=True)
+    color = db.Column(db.String(20), default='accent')  # accent, warning, error, etc.
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Region(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -304,6 +317,10 @@ def api_partners():
             products = Product.query.filter(Product.id.in_(data['product_ids'])).all()
             partner.products = products
         
+        if data.get('tag_ids'):
+            tags = Tag.query.filter(Tag.id.in_(data['tag_ids'])).all()
+            partner.tags = tags
+        
         db.session.add(partner)
         db.session.commit()
         return jsonify({'success': True, 'id': partner.id})
@@ -339,6 +356,11 @@ def api_partners():
     if product_ids:
         query = query.filter(Partner.products.any(Product.id.in_(product_ids)))
     
+    # Filter by tag
+    tag_ids = request.args.getlist('tag_id')
+    if tag_ids:
+        query = query.filter(Partner.tags.any(Tag.id.in_(tag_ids)))
+    
     # Filter new partners only
     if request.args.get('new_only') == 'true':
         query = query.filter(Partner.last_contacted.is_(None))
@@ -357,6 +379,7 @@ def api_partners():
         'tsd_id': p.tsd_id,
         'tsd': p.tsd.name if p.tsd else None,
         'products': [{'id': prod.id, 'name': prod.name} for prod in p.products],
+        'tags': [{'id': tag.id, 'name': tag.name, 'color': tag.color} for tag in p.tags],
         'notes': p.notes,
         'opted_out': p.opted_out,
         'is_new': p.is_new,
@@ -390,6 +413,10 @@ def api_partner(id):
             products = Product.query.filter(Product.id.in_(data['product_ids'])).all()
             partner.products = products
         
+        if 'tag_ids' in data:
+            tags = Tag.query.filter(Tag.id.in_(data['tag_ids'])).all()
+            partner.tags = tags
+        
         db.session.commit()
         return jsonify({'success': True})
     
@@ -405,6 +432,7 @@ def api_partner(id):
         'tsd_id': partner.tsd_id,
         'tsd': partner.tsd.name if partner.tsd else None,
         'products': [{'id': prod.id, 'name': prod.name} for prod in partner.products],
+        'tags': [{'id': tag.id, 'name': tag.name, 'color': tag.color} for tag in partner.tags],
         'notes': partner.notes,
         'opted_out': partner.opted_out,
         'is_new': partner.is_new,
@@ -598,6 +626,63 @@ def api_product(id):
         db.session.commit()
         return jsonify({'success': True})
     return jsonify({'success': True})
+
+# API: Tags
+@app.route('/api/tags', methods=['GET', 'POST'])
+@login_required
+def api_tags():
+    if request.method == 'POST':
+        data = request.json
+        tag = Tag(name=data['name'], color=data.get('color', 'accent'))
+        db.session.add(tag)
+        db.session.commit()
+        return jsonify({'success': True, 'id': tag.id})
+    
+    tags = Tag.query.order_by(Tag.name).all()
+    return jsonify([{'id': t.id, 'name': t.name, 'color': t.color} for t in tags])
+
+@app.route('/api/tags/<int:id>', methods=['PUT', 'DELETE'])
+@login_required
+def api_tag(id):
+    tag = Tag.query.get_or_404(id)
+    
+    if request.method == 'DELETE':
+        db.session.delete(tag)
+        db.session.commit()
+        return jsonify({'success': True})
+    
+    if request.method == 'PUT':
+        data = request.json
+        tag.name = data.get('name', tag.name)
+        tag.color = data.get('color', tag.color)
+        db.session.commit()
+        return jsonify({'success': True})
+    return jsonify({'success': True})
+
+# API: Message Search
+@app.route('/api/messages/search')
+@login_required
+def api_message_search():
+    query = request.args.get('q', '').strip()
+    if not query or len(query) < 2:
+        return jsonify([])
+    
+    search_term = f"%{query}%"
+    messages = Message.query.filter(Message.body.ilike(search_term)).order_by(Message.created_at.desc()).limit(50).all()
+    
+    results = []
+    for m in messages:
+        partner = Partner.query.get(m.partner_id)
+        results.append({
+            'id': m.id,
+            'partner_id': m.partner_id,
+            'partner_name': partner.full_name if partner else 'Unknown',
+            'direction': m.direction,
+            'body': m.body,
+            'created_at': m.created_at.isoformat()
+        })
+    
+    return jsonify(results)
 
 # API: Message Templates
 @app.route('/api/templates', methods=['GET', 'POST'])
@@ -959,6 +1044,20 @@ def webhook_incoming():
     
     resp = MessagingResponse()
     return str(resp)
+
+# Twilio webhook for delivery status updates
+@app.route('/webhook/status', methods=['POST'])
+def webhook_status():
+    message_sid = request.values.get('MessageSid', '')
+    status = request.values.get('MessageStatus', '')
+    
+    if message_sid and status:
+        message = Message.query.filter_by(twilio_sid=message_sid).first()
+        if message:
+            message.status = status
+            db.session.commit()
+    
+    return '', 200
 
 # Background job to send scheduled messages
 def send_scheduled_messages():

@@ -33,6 +33,23 @@
             --outbound: #102520;
         }
         
+        [data-theme="light"] {
+            --bg-dark: #f5f5f7;
+            --bg-card: #ffffff;
+            --bg-hover: #e8e8ed;
+            --accent: #00a080;
+            --accent-dim: #008060;
+            --text-primary: #1a1a2e;
+            --text-secondary: #5a5a70;
+            --text-muted: #9090a8;
+            --border: #d0d0d8;
+            --success: #00a080;
+            --warning: #cc9900;
+            --error: #cc3344;
+            --inbound: #e8f0f5;
+            --outbound: #e0f5f0;
+        }
+        
         html, body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: var(--bg-dark);
@@ -928,6 +945,22 @@
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('/static/sw.js').catch(err => console.log('SW failed:', err));
         }
+        
+        // Theme management
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        }
+        
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme') || 'dark';
+            const newTheme = current === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            showToast(`Switched to ${newTheme} mode`);
+        }
+        
+        initTheme();
         
         // Global toast function
         function showToast(message, type = 'success') {

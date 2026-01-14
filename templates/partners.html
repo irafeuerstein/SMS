@@ -114,6 +114,11 @@
             </div>
             
             <div class="form-group">
+                <label class="form-label">Tags</label>
+                <div class="checkbox-group" id="editTagCheckboxes"></div>
+            </div>
+            
+            <div class="form-group">
                 <label class="form-label">Notes</label>
                 <textarea class="form-textarea" id="editNotes" rows="2"></textarea>
             </div>
@@ -169,14 +174,26 @@ let currentFilterType = null;
 let searchTimeout = null;
 let bulkMode = false;
 let selectedPartnerIds = new Set();
+let tags = [];
 
 async function loadData() {
-    const [r1, r2, r3] = await Promise.all([fetch('/api/regions'), fetch('/api/tsds'), fetch('/api/products')]);
+    const [r1, r2, r3, r4] = await Promise.all([fetch('/api/regions'), fetch('/api/tsds'), fetch('/api/products'), fetch('/api/tags')]);
     regions = await r1.json();
     tsds = await r2.json();
     products = await r3.json();
+    tags = await r4.json();
     populateDropdowns();
     loadPartners();
+}
+
+function getTagColorClass(color) {
+    const colors = {
+        accent: 'background: rgba(0, 212, 170, 0.15); color: var(--accent);',
+        warning: 'background: rgba(255, 187, 0, 0.15); color: var(--warning);',
+        error: 'background: rgba(255, 85, 102, 0.15); color: var(--error);',
+        secondary: 'background: var(--bg-hover); color: var(--text-secondary);'
+    };
+    return colors[color] || colors.secondary;
 }
 
 function populateDropdowns() {
@@ -187,6 +204,9 @@ function populateDropdowns() {
     document.getElementById('editProductCheckboxes').innerHTML = products.map(p => `
         <label class="checkbox-item"><input type="checkbox" value="${p.id}"><span>${p.name}</span></label>
     `).join('');
+    document.getElementById('editTagCheckboxes').innerHTML = tags.length > 0 ? tags.map(t => `
+        <label class="checkbox-item"><input type="checkbox" value="${t.id}"><span class="chip" style="${getTagColorClass(t.color)}">${t.name}</span></label>
+    `).join('') : '<span style="color: var(--text-muted); font-size: 0.8rem;">No tags yet. Create them in Settings.</span>';
 }
 
 function debounceSearch() {
@@ -235,6 +255,7 @@ function renderPartners() {
                 ${p.region ? `<span class="chip">${escapeHtml(p.region)}</span>` : ''}
                 ${p.tsd ? `<span class="chip">${escapeHtml(p.tsd)}</span>` : ''}
                 ${p.products.map(prod => `<span class="chip accent">${escapeHtml(prod.name)}</span>`).join('')}
+                ${(p.tags || []).map(tag => `<span class="chip" style="${getTagColorClass(tag.color)}">${escapeHtml(tag.name)}</span>`).join('')}
             </div>
         </div>
     `).join('');
@@ -328,6 +349,11 @@ function openEditModal(id) {
         cb.checked = productIds.includes(parseInt(cb.value));
     });
     
+    const tagIds = (partner.tags || []).map(t => t.id);
+    document.querySelectorAll('#editTagCheckboxes input').forEach(cb => {
+        cb.checked = tagIds.includes(parseInt(cb.value));
+    });
+    
     closeModal('viewModal');
     openModal('editModal');
 }
@@ -336,6 +362,7 @@ async function savePartner(e) {
     e.preventDefault();
     const id = document.getElementById('editId').value;
     const productIds = Array.from(document.querySelectorAll('#editProductCheckboxes input:checked')).map(cb => parseInt(cb.value));
+    const tagIds = Array.from(document.querySelectorAll('#editTagCheckboxes input:checked')).map(cb => parseInt(cb.value));
     
     const data = {
         first_name: document.getElementById('editFirstName').value,
@@ -345,6 +372,7 @@ async function savePartner(e) {
         region_id: document.getElementById('editRegionId').value || null,
         tsd_id: document.getElementById('editTsdId').value || null,
         product_ids: productIds,
+        tag_ids: tagIds,
         notes: document.getElementById('editNotes').value
     };
     
@@ -376,6 +404,7 @@ function viewPartner(id) {
         <div class="form-group"><label class="form-label">Region</label><div>${escapeHtml(p.region || 'Not set')}</div></div>
         <div class="form-group"><label class="form-label">TSD</label><div>${escapeHtml(p.tsd || 'Not set')}</div></div>
         <div class="form-group"><label class="form-label">Products</label><div class="chips">${p.products.length > 0 ? p.products.map(x => `<span class="chip accent">${escapeHtml(x.name)}</span>`).join('') : '<span class="text-muted">None</span>'}</div></div>
+        <div class="form-group"><label class="form-label">Tags</label><div class="chips">${(p.tags || []).length > 0 ? p.tags.map(x => `<span class="chip" style="${getTagColorClass(x.color)}">${escapeHtml(x.name)}</span>`).join('') : '<span class="text-muted">None</span>'}</div></div>
         ${p.notes ? `<div class="form-group"><label class="form-label">Notes</label><div style="color: var(--text-secondary);">${escapeHtml(p.notes)}</div></div>` : ''}
         <div class="form-group"><label class="form-label">Status</label><div>${p.is_new ? '<span class="chip new">Never contacted</span>' : `Last contacted: ${new Date(p.last_contacted).toLocaleDateString()}`}</div></div>
         

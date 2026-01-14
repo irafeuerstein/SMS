@@ -7,6 +7,19 @@
 </header>
 
 <main class="content">
+    <div class="settings-section-title">Appearance</div>
+    <div class="card" style="margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <div style="font-weight: 500;">Theme</div>
+                <div style="font-size: 0.8rem; color: var(--text-muted);">Switch between dark and light mode</div>
+            </div>
+            <button class="btn btn-sm btn-secondary" onclick="toggleTheme()" id="themeBtn">
+                🌙 Dark
+            </button>
+        </div>
+    </div>
+
     <div class="settings-section-title">Regions</div>
     <div class="card">
         <div id="regionsList" class="tag-list mb-3"></div>
@@ -34,6 +47,21 @@
         </div>
     </div>
     
+    <div class="settings-section-title">Custom Tags</div>
+    <div class="card">
+        <div id="tagsList" class="tag-list mb-3"></div>
+        <div class="flex gap-2">
+            <input type="text" class="form-input" id="newTag" placeholder="Add tag (e.g., VIP, Follow-up)">
+            <select class="form-select" id="newTagColor" style="width: 100px;">
+                <option value="accent">Teal</option>
+                <option value="warning">Yellow</option>
+                <option value="error">Red</option>
+                <option value="secondary">Gray</option>
+            </select>
+            <button class="btn btn-sm" onclick="addTag()">Add</button>
+        </div>
+    </div>
+    
     <div class="settings-section-title">Account</div>
     <div class="settings-list">
         <a href="/logout" class="settings-item" style="text-decoration: none; color: var(--error);">
@@ -54,6 +82,15 @@
             <label class="form-label">Name</label>
             <input type="text" class="form-input" id="editName">
         </div>
+        <div class="form-group" id="editColorGroup" style="display: none;">
+            <label class="form-label">Color</label>
+            <select class="form-select" id="editColor">
+                <option value="accent">Teal</option>
+                <option value="warning">Yellow</option>
+                <option value="error">Red</option>
+                <option value="secondary">Gray</option>
+            </select>
+        </div>
         <input type="hidden" id="editType">
         <input type="hidden" id="editItemId">
         <div class="flex gap-2 mt-4">
@@ -66,22 +103,48 @@
 
 {% block extra_js %}
 <script>
-let regions = [], tsds = [], products = [];
+let regions = [], tsds = [], products = [], tags = [];
+
+// Update theme button text on load
+function updateThemeBtn() {
+    const theme = document.documentElement.getAttribute('data-theme') || 'dark';
+    document.getElementById('themeBtn').textContent = theme === 'dark' ? '🌙 Dark' : '☀️ Light';
+}
+updateThemeBtn();
+
+// Override toggleTheme to also update button
+const originalToggleTheme = window.toggleTheme;
+window.toggleTheme = function() {
+    originalToggleTheme();
+    updateThemeBtn();
+};
 
 async function loadData() {
     try {
-        const [r1, r2, r3] = await Promise.all([
+        const [r1, r2, r3, r4] = await Promise.all([
             fetch('/api/regions'),
             fetch('/api/tsds'),
-            fetch('/api/products')
+            fetch('/api/products'),
+            fetch('/api/tags')
         ]);
         regions = await r1.json();
         tsds = await r2.json();
         products = await r3.json();
+        tags = await r4.json();
         render();
     } catch (err) {
         console.error('Failed to load data:', err);
     }
+}
+
+function getTagColorStyle(color) {
+    const colors = {
+        accent: 'background: rgba(0, 212, 170, 0.15); color: var(--accent);',
+        warning: 'background: rgba(255, 187, 0, 0.15); color: var(--warning);',
+        error: 'background: rgba(255, 85, 102, 0.15); color: var(--error);',
+        secondary: 'background: var(--bg-hover); color: var(--text-secondary);'
+    };
+    return colors[color] || colors.secondary;
 }
 
 function render() {
@@ -126,6 +189,20 @@ function render() {
             </div>
         `).join('');
     }
+    
+    // Tags
+    const tagsEl = document.getElementById('tagsList');
+    if (tags.length === 0) {
+        tagsEl.innerHTML = '<span style="color: var(--text-muted);">No custom tags yet</span>';
+    } else {
+        tagsEl.innerHTML = tags.map(t => `
+            <div class="tag-item" style="${getTagColorStyle(t.color)}">
+                <span style="flex: 1;">${escapeHtml(t.name)}</span>
+                <button onclick="openEdit('tag', ${t.id})" title="Edit" style="margin-right: 4px;">✎</button>
+                <button onclick="deleteItem('tag', ${t.id})" title="Delete">✕</button>
+            </div>
+        `).join('');
+    }
 }
 
 function escapeHtml(str) {
@@ -146,6 +223,7 @@ async function addRegion() {
     });
     if (res.ok) {
         input.value = '';
+        showToast('Region added');
         loadData();
     }
 }
@@ -162,6 +240,7 @@ async function addTsd() {
     });
     if (res.ok) {
         input.value = '';
+        showToast('TSD added');
         loadData();
     }
 }
@@ -178,6 +257,26 @@ async function addProduct() {
     });
     if (res.ok) {
         input.value = '';
+        showToast('Product added');
+        loadData();
+    }
+}
+
+async function addTag() {
+    const input = document.getElementById('newTag');
+    const colorSelect = document.getElementById('newTagColor');
+    const name = input.value.trim();
+    const color = colorSelect.value;
+    if (!name) return;
+    
+    const res = await fetch('/api/tags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, color })
+    });
+    if (res.ok) {
+        input.value = '';
+        showToast('Tag added');
         loadData();
     }
 }
@@ -187,6 +286,7 @@ async function deleteItem(type, id) {
     
     let url = '/api/' + type + 's/' + id;
     await fetch(url, { method: 'DELETE' });
+    showToast(type.charAt(0).toUpperCase() + type.slice(1) + ' deleted');
     loadData();
 }
 
@@ -195,6 +295,7 @@ function openEdit(type, id) {
     if (type === 'region') item = regions.find(r => r.id === id);
     else if (type === 'tsd') item = tsds.find(t => t.id === id);
     else if (type === 'product') item = products.find(p => p.id === id);
+    else if (type === 'tag') item = tags.find(t => t.id === id);
     
     if (!item) return;
     
@@ -202,6 +303,16 @@ function openEdit(type, id) {
     document.getElementById('editItemId').value = id;
     document.getElementById('editName').value = item.name;
     document.getElementById('editModalTitle').textContent = 'Edit ' + type.charAt(0).toUpperCase() + type.slice(1);
+    
+    // Show/hide color picker for tags
+    const colorGroup = document.getElementById('editColorGroup');
+    if (type === 'tag') {
+        colorGroup.style.display = 'block';
+        document.getElementById('editColor').value = item.color || 'accent';
+    } else {
+        colorGroup.style.display = 'none';
+    }
+    
     openModal('editModal');
 }
 
@@ -213,18 +324,24 @@ async function saveEdit() {
     if (!name) return;
     
     let url = '/api/' + type + 's/' + id;
+    let body = { name };
+    
+    if (type === 'tag') {
+        body.color = document.getElementById('editColor').value;
+    }
     
     const res = await fetch(url, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name })
+        body: JSON.stringify(body)
     });
     
     if (res.ok) {
         closeModal('editModal');
+        showToast(type.charAt(0).toUpperCase() + type.slice(1) + ' updated');
         loadData();
     } else {
-        alert('Failed to save');
+        showToast('Failed to save', 'error');
     }
 }
 
@@ -238,6 +355,7 @@ document.querySelectorAll('.modal-overlay').forEach(o => {
 document.getElementById('newRegion').addEventListener('keydown', e => { if (e.key === 'Enter') addRegion(); });
 document.getElementById('newTsd').addEventListener('keydown', e => { if (e.key === 'Enter') addTsd(); });
 document.getElementById('newProduct').addEventListener('keydown', e => { if (e.key === 'Enter') addProduct(); });
+document.getElementById('newTag').addEventListener('keydown', e => { if (e.key === 'Enter') addTag(); });
 
 loadData();
 </script>
