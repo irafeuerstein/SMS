@@ -2142,45 +2142,56 @@ def api_upload():
 # AI SDR: Generate draft reply for inbound message
 def generate_ai_draft(partner_id, message_id):
     """Generate AI draft reply in background"""
-    try:
-        client = get_ai_client()
-        if not client:
-            return
-        
-        partner = Partner.query.get(partner_id)
-        if not partner:
-            return
-        
-        # Check if user has AI SDR enabled
-        user = User.query.get(partner.user_id)
-        if not user or not user.ai_sdr_enabled:
-            return
-        
-        # Get conversation history
-        messages = Message.query.filter_by(partner_id=partner_id).order_by(Message.created_at.desc()).limit(10).all()
-        messages.reverse()
-        
-        conversation = []
-        for m in messages:
-            role = 'Partner' if m.direction == 'inbound' else 'You'
-            conversation.append(f"{role}: {m.body}")
-        
-        conversation_text = '\n'.join(conversation)
-        
-        # Get business knowledge
-        knowledge = get_ai_knowledge_context(tenant_id=partner.tenant_id)
-        
-        # Get user's personal style
-        style_instruction = ""
-        if user.personal_style:
-            style_instruction = f"\n\nIMPORTANT - Match this writing style: {user.personal_style}"
-        
-        # Get calendar link if available
-        calendar_note = ""
-        if user.calendar_link:
-            calendar_note = f"\n\nIf scheduling a meeting, suggest this calendar link: {user.calendar_link}"
-        
-        prompt = f"""You are an AI SDR (Sales Development Rep) assistant for a Strategic Partner Manager at SilverSky, a cybersecurity company.
+    with app.app_context():
+        try:
+            print(f"AI SDR: Generating draft for partner {partner_id}, message {message_id}")
+            
+            client = get_ai_client()
+            if not client:
+                print("AI SDR: No AI client configured")
+                return
+            
+            partner = Partner.query.get(partner_id)
+            if not partner:
+                print(f"AI SDR: Partner {partner_id} not found")
+                return
+            
+            # Check if user has AI SDR enabled (default to True if NULL)
+            user = User.query.get(partner.user_id)
+            if not user:
+                print(f"AI SDR: User not found for partner {partner_id}")
+                return
+            
+            # Treat NULL as enabled (default)
+            if user.ai_sdr_enabled == False:
+                print(f"AI SDR: Disabled for user {user.id}")
+                return
+            
+            # Get conversation history
+            messages = Message.query.filter_by(partner_id=partner_id).order_by(Message.created_at.desc()).limit(10).all()
+            messages.reverse()
+            
+            conversation = []
+            for m in messages:
+                role = 'Partner' if m.direction == 'inbound' else 'You'
+                conversation.append(f"{role}: {m.body}")
+            
+            conversation_text = '\n'.join(conversation)
+            
+            # Get business knowledge
+            knowledge = get_ai_knowledge_context(tenant_id=partner.tenant_id)
+            
+            # Get user's personal style
+            style_instruction = ""
+            if user.personal_style:
+                style_instruction = f"\n\nIMPORTANT - Match this writing style: {user.personal_style}"
+            
+            # Get calendar link if available
+            calendar_note = ""
+            if user.calendar_link:
+                calendar_note = f"\n\nIf scheduling a meeting, suggest this calendar link: {user.calendar_link}"
+            
+            prompt = f"""You are an AI SDR (Sales Development Rep) assistant for a Strategic Partner Manager at SilverSky, a cybersecurity company.
 
 Your job is to draft SMS replies that the manager can review and send. Be helpful, professional, and concise.
 {knowledge}
@@ -2199,27 +2210,31 @@ Recent conversation:
 
 Write a single SMS reply (under 300 characters) that responds to the partner's last message. Be helpful and move the conversation forward. Do NOT include any preamble or explanation - just the SMS text itself."""
 
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=200,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        
-        draft = response.content[0].text.strip()
-        
-        # Remove quotes if AI wrapped it
-        if draft.startswith('"') and draft.endswith('"'):
-            draft = draft[1:-1]
-        
-        # Save draft to the inbound message
-        msg = Message.query.get(message_id)
-        if msg:
-            msg.ai_draft = draft
-            msg.ai_draft_status = 'pending'
-            db.session.commit()
+            print(f"AI SDR: Calling Claude API...")
+            response = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=200,
+                messages=[{"role": "user", "content": prompt}]
+            )
             
-    except Exception as e:
-        print(f"AI Draft error: {e}")
+            draft = response.content[0].text.strip()
+            
+            # Remove quotes if AI wrapped it
+            if draft.startswith('"') and draft.endswith('"'):
+                draft = draft[1:-1]
+            
+            # Save draft to the inbound message
+            msg = Message.query.get(message_id)
+            if msg:
+                msg.ai_draft = draft
+                msg.ai_draft_status = 'pending'
+                db.session.commit()
+                print(f"AI SDR: Draft saved - {draft[:50]}...")
+            
+        except Exception as e:
+            print(f"AI SDR Draft error: {e}")
+            import traceback
+            traceback.print_exc()
 
 # Twilio webhook for incoming messages
 @app.route('/webhook/incoming', methods=['POST'])
