@@ -1,49 +1,49 @@
 {% extends 'base.html' %}
-{% block title %}Broadcast - SilverSky Partners{% endblock %}
+{% block title %}Broadcast - SilverSky SMS{% endblock %}
 
 {% block content %}
 <header class="header">
-    <h1>Broadcast</h1>
+    <h1>
+        <div class="logo-mark">S</div>
+        Broadcast
+    </h1>
     <button class="header-btn" onclick="openModal('scheduledModal')">
-        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="24" height="24">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
         </svg>
     </button>
 </header>
 
 <main class="content">
+    <!-- Step 1: Select Recipients -->
     <div class="card">
-        <h3 style="font-size: 0.9rem; margin-bottom: 12px;">1. Select Partners</h3>
-        
-        <div class="form-group">
-            <label class="form-label">Region</label>
-            <select class="form-select" id="regionFilter" onchange="loadPartners()">
-                <option value="">All Regions</option>
-            </select>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px;">
+            <div style="background: var(--accent); color: var(--bg-primary); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.75rem;">1</div>
+            <h3 style="font-size: 0.95rem; font-weight: 600;">Select Recipients</h3>
         </div>
         
-        <div class="form-group">
-            <label class="form-label">TSD</label>
-            <select class="form-select" id="tsdFilter" onchange="loadPartners()">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+            <select class="form-select" id="regionFilter" onchange="loadPartners()" style="font-size: 0.85rem;">
+                <option value="">All Regions</option>
+            </select>
+            <select class="form-select" id="tsdFilter" onchange="loadPartners()" style="font-size: 0.85rem;">
                 <option value="">All TSDs</option>
             </select>
         </div>
         
-        <div class="form-group">
-            <label class="form-label">Product</label>
-            <select class="form-select" id="productFilter" onchange="loadPartners()">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+            <select class="form-select" id="productFilter" onchange="loadPartners()" style="font-size: 0.85rem;">
                 <option value="">All Products</option>
             </select>
+            <label class="checkbox-item" style="margin: 0; padding: 10px;">
+                <input type="checkbox" id="newOnlyFilter" onchange="loadPartners()">
+                <span style="font-size: 0.85rem;">New only</span>
+            </label>
         </div>
         
-        <label class="checkbox-item" style="margin-bottom: 12px;">
-            <input type="checkbox" id="newOnlyFilter" onchange="loadPartners()">
-            <span>New partners only</span>
-        </label>
+        <div id="partnerCount" style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 8px;"></div>
         
-        <div id="partnerCount" style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 8px;"></div>
-        
-        <div id="partnerSelectList" style="max-height: 200px; overflow-y: auto; background: var(--bg-dark); border-radius: 10px; padding: 8px;"></div>
+        <div id="partnerSelectList" style="max-height: 150px; overflow-y: auto; background: var(--bg-primary); border-radius: var(--radius-md); padding: 8px;"></div>
         
         <div class="flex gap-2 mt-3">
             <button class="btn btn-sm btn-ghost" onclick="selectAll()">Select All</button>
@@ -51,12 +51,15 @@
         </div>
     </div>
     
+    <!-- Step 2: Compose -->
     <div class="card">
-        <h3 style="font-size: 0.9rem; margin-bottom: 12px;">2. Compose Message</h3>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px;">
+            <div style="background: var(--accent); color: var(--bg-primary); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.75rem;">2</div>
+            <h3 style="font-size: 0.95rem; font-weight: 600;">Compose Message</h3>
+        </div>
         
         <!-- Template Selector -->
         <div class="form-group">
-            <label class="form-label">Use Template</label>
             <div style="display: flex; gap: 8px;">
                 <select class="form-select" id="templateSelect" onchange="applyTemplate()" style="flex: 1;">
                     <option value="">Select a template...</option>
@@ -95,15 +98,17 @@
         <input type="file" id="broadcastMediaInput" accept="image/*,video/*,audio/*" style="display: none;" onchange="handleMedia(event)">
     </div>
     
+    <!-- Step 3: Send -->
     <div class="card">
-        <h3 style="font-size: 0.9rem; margin-bottom: 12px;">3. Send Options</h3>
-        
-        <div class="form-group">
-            <label class="checkbox-item">
-                <input type="checkbox" id="scheduleCheckbox" onchange="toggleSchedule()">
-                <span>Schedule for later</span>
-            </label>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px;">
+            <div style="background: var(--accent); color: var(--bg-primary); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.75rem;">3</div>
+            <h3 style="font-size: 0.95rem; font-weight: 600;">Send Options</h3>
         </div>
+        
+        <label class="checkbox-item" style="margin-bottom: 12px;">
+            <input type="checkbox" id="scheduleCheckbox" onchange="toggleSchedule()">
+            <span>Schedule for later</span>
+        </label>
         
         <div id="scheduleOptions" style="display: none;">
             <div class="form-group">
@@ -113,8 +118,8 @@
         </div>
     </div>
     
-    <button class="btn btn-block" id="sendBtn" onclick="sendBroadcast()">
-        <span id="sendBtnText">Send to <span id="selectedCount">0</span> Partners</span>
+    <button class="btn btn-block" id="sendBtn" onclick="sendBroadcast()" style="margin-bottom: 20px;">
+        <span id="sendBtnText">Send to <span id="selectedCount">0</span> Contacts</span>
         <span id="sendBtnLoading" style="display: none;">Sending...</span>
     </button>
 </main>

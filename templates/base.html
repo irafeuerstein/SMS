@@ -730,6 +730,24 @@
             color: var(--accent);
             background: var(--accent-dim);
         }
+        
+        /* Nav Badge */
+        .nav-badge {
+            position: absolute;
+            top: 2px;
+            right: 8px;
+            background: var(--error);
+            color: white;
+            font-size: 0.6rem;
+            font-weight: 700;
+            min-width: 16px;
+            height: 16px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 4px;
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
@@ -746,10 +764,11 @@
                     </svg>
                     Home
                 </a>
-                <a href="/inbox" class="nav-item {% if request.endpoint == 'inbox' %}active{% endif %}">
+                <a href="/inbox" class="nav-item {% if request.endpoint == 'inbox' %}active{% endif %}" style="position: relative;">
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
                     </svg>
+                    <span class="nav-badge hidden" id="navUnreadBadge">0</span>
                     Inbox
                 </a>
                 <a href="/broadcast" class="nav-item {% if request.endpoint == 'broadcast' %}active{% endif %}">
@@ -816,6 +835,25 @@
                 e.target.classList.remove('active');
             }
         });
+        
+        // Fetch and display unread count
+        async function updateUnreadBadge() {
+            try {
+                const res = await fetch('/api/stats');
+                const data = await res.json();
+                const badge = document.getElementById('navUnreadBadge');
+                if (badge && data.unread > 0) {
+                    badge.textContent = data.unread > 99 ? '99+' : data.unread;
+                    badge.classList.remove('hidden');
+                } else if (badge) {
+                    badge.classList.add('hidden');
+                }
+            } catch (err) {}
+        }
+        
+        // Update badge on load and every 30 seconds
+        updateUnreadBadge();
+        setInterval(updateUnreadBadge, 30000);
     </script>
     {% block extra_js %}{% endblock %}
 </body>

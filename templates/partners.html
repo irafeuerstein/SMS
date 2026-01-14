@@ -1,11 +1,14 @@
 {% extends 'base.html' %}
-{% block title %}Partners - SilverSky Partners{% endblock %}
+{% block title %}Contacts - SilverSky SMS{% endblock %}
 
 {% block content %}
 <header class="header">
-    <h1>Partners</h1>
+    <h1>
+        <div class="logo-mark">S</div>
+        Contacts
+    </h1>
     <button class="header-btn" onclick="openAddModal()">
-        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="24" height="24">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
         </svg>
     </button>
@@ -14,40 +17,31 @@
 <main class="content">
     <!-- Search Bar -->
     <div class="form-group" style="margin-bottom: 12px;">
-        <input type="text" class="form-input" id="searchInput" placeholder="Search partners..." oninput="debounceSearch()">
+        <input type="text" class="form-input" id="searchInput" placeholder="Search contacts..." oninput="debounceSearch()">
     </div>
     
     <!-- Filter Bar -->
     <div class="filter-bar" id="filterBar">
-        <button class="filter-chip" onclick="toggleFilter('new')" id="filterNew">
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
-            New Only
-        </button>
-        <button class="filter-chip" onclick="openFilterModal('region')">
-            Region <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-        </button>
-        <button class="filter-chip" onclick="openFilterModal('tsd')">
-            TSD <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-        </button>
-        <button class="filter-chip" onclick="openFilterModal('product')">
-            Product <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-        </button>
+        <button class="filter-chip" onclick="toggleFilter('new')" id="filterNew">✨ New</button>
+        <button class="filter-chip" onclick="openFilterModal('region')">Region ▾</button>
+        <button class="filter-chip" onclick="openFilterModal('tsd')">TSD ▾</button>
+        <button class="filter-chip" onclick="openFilterModal('product')">Product ▾</button>
     </div>
     
     <div id="activeFilters" class="chips mb-3" style="display: none;"></div>
     
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
         <div id="partnerCount" style="font-size: 0.8rem; color: var(--text-muted);"></div>
-        <div style="display: flex; gap: 8px;">
-            <button class="btn btn-sm btn-ghost" onclick="toggleBulkMode()" id="bulkModeBtn">☑️ Select</button>
-            <button class="btn btn-sm btn-ghost" onclick="document.getElementById('csvInput').click()">📥 Import</button>
-            <button class="btn btn-sm btn-ghost" onclick="exportPartners()">📤 Export</button>
+        <div style="display: flex; gap: 6px;">
+            <button class="btn btn-sm btn-ghost" onclick="toggleBulkMode()" id="bulkModeBtn">Select</button>
+            <button class="btn btn-sm btn-ghost" onclick="document.getElementById('csvInput').click()">Import</button>
+            <button class="btn btn-sm btn-ghost" onclick="exportPartners()">Export</button>
         </div>
     </div>
     <input type="file" id="csvInput" accept=".csv" style="display: none;" onchange="importCSV(event)">
     
     <!-- Bulk Action Bar -->
-    <div id="bulkActionBar" style="display: none; background: var(--bg-card); border: 1px solid var(--accent); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px;">
+    <div id="bulkActionBar" style="display: none; background: var(--bg-card); border: 1px solid var(--accent); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 12px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div>
                 <span id="bulkSelectedCount" style="font-weight: 600; color: var(--accent);">0</span>

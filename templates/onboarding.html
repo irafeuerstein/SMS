@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <title>Setup - SilverSky SMS</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-primary: #0a0a12;
+            --bg-secondary: #0f0f1a;
+            --bg-card: #151520;
+            --bg-hover: #1c1c2e;
+            --accent: #00d4aa;
+            --accent-dim: rgba(0, 212, 170, 0.12);
+            --ai-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --ai-dim: rgba(102, 126, 234, 0.15);
+            --text-primary: #f5f5f7;
+            --text-secondary: #a0a0b0;
+            --text-muted: #606070;
+            --border: #252535;
+            --success: #00d4aa;
+            --error: #ff4d6a;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .wizard-container {
+            width: 100%;
+            max-width: 480px;
+        }
+        
+        .wizard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .wizard-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 8px;
+        }
+        
+        .wizard-step-indicator {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        
+        .wizard-progress {
+            height: 4px;
+            background: var(--bg-hover);
+            border-radius: 2px;
+            margin-bottom: 32px;
+            overflow: hidden;
+        }
+        
+        .wizard-progress-bar {
+            height: 100%;
+            background: var(--ai-gradient);
+            transition: width 0.3s ease;
+        }
+        
+        .wizard-card {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            padding: 32px;
+            border: 1px solid var(--border);
+        }
+        
+        .wizard-icon {
+            font-size: 3rem;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .wizard-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 12px;
+        }
+        
+        .wizard-desc {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            margin-bottom: 28px;
+            line-height: 1.5;
+        }
+        
+        .form-group { margin-bottom: 20px; }
+        
+        .form-label {
+            display: block;
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .form-input, .form-textarea {
+            width: 100%;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 14px 16px;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            font-family: inherit;
+            transition: all 0.15s ease;
+        }
+        
+        .form-input:focus, .form-textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-dim);
+        }
+        
+        .form-input::placeholder { color: var(--text-muted); }
+        .form-textarea { resize: vertical; min-height: 100px; }
+        
+        .btn {
+            width: 100%;
+            padding: 16px;
+            border-radius: var(--radius-md);
+            font-size: 1rem;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            border: none;
+        }
+        
+        .btn-primary {
+            background: var(--accent);
+            color: var(--bg-primary);
+        }
+        
+        .btn-ai {
+            background: var(--ai-gradient);
+            color: white;
+        }
+        
+        .btn-secondary {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+        
+        .btn:active { transform: scale(0.98); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .btn-group {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        
+        .btn-group .btn {
+            flex: 1;
+            padding: 14px;
+            font-size: 0.9rem;
+        }
+        
+        .skip-link {
+            display: block;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            margin-top: 16px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        
+        .skip-link:hover { color: var(--text-secondary); }
+        
+        .status-message {
+            text-align: center;
+            font-size: 0.85rem;
+            margin-top: 12px;
+            min-height: 20px;
+        }
+        
+        .status-message.success { color: var(--success); }
+        .status-message.error { color: var(--error); }
+        
+        .style-options {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        
+        .style-option {
+            background: var(--bg-hover);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 14px 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        
+        .style-option:hover, .style-option.active {
+            border-color: var(--accent);
+            background: var(--accent-dim);
+        }
+        
+        .style-option .emoji { font-size: 1.5rem; margin-bottom: 6px; }
+        .style-option .label { font-size: 0.8rem; color: var(--text-secondary); }
+        
+        .hidden { display: none !important; }
+        
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--border);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            display: inline-block;
+        }
+        
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .success-animation {
+            font-size: 4rem;
+            text-align: center;
+            animation: bounceIn 0.5s ease;
+        }
+        
+        @keyframes bounceIn {
+            0% { transform: scale(0); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <div class="wizard-container">
+        <div class="wizard-header">
+            <a href="/" class="wizard-close" title="Exit setup">✕</a>
+            <span class="wizard-step-indicator">Step <span id="currentStepNum">1</span> of 6</span>
+        </div>
+        
+        <div class="wizard-progress">
+            <div class="wizard-progress-bar" id="progressBar" style="width: 16.66%;"></div>
+        </div>
+        
+        <!-- Step 1: Welcome -->
+        <div class="wizard-card wizard-step" id="step1">
+            <div class="wizard-icon">👋</div>
+            <h1 class="wizard-title">Welcome to SilverSky SMS</h1>
+            <p class="wizard-desc">Let's get you set up in just a few minutes. We'll help you train your AI assistant and import your contacts.</p>
+            <button class="btn btn-primary" onclick="nextStep()">Get Started →</button>
+            <a href="/" class="skip-link">Skip for now</a>
+        </div>
+        
+        <!-- Step 2: Import Website -->
+        <div class="wizard-card wizard-step hidden" id="step2">
+            <div class="wizard-icon">🌐</div>
+            <h1 class="wizard-title">Import Your Business</h1>
+            <p class="wizard-desc">Paste your website URL and we'll learn about your products and services automatically.</p>
+            <div class="form-group">
+                <input type="text" class="form-input" id="websiteUrl" placeholder="yourcompany.com">
+            </div>
+            <button class="btn btn-ai" onclick="importWebsite()" id="importBtn">🔍 Import Website</button>
+            <div class="status-message" id="importStatus"></div>
+            <a href="#" class="skip-link" onclick="nextStep()">Skip this step</a>
+        </div>
+        
+        <!-- Step 3: Add Contacts -->
+        <div class="wizard-card wizard-step hidden" id="step3">
+            <div class="wizard-icon">👥</div>
+            <h1 class="wizard-title">Add Your Contacts</h1>
+            <p class="wizard-desc">Import your contacts from a CSV file or add them manually later.</p>
+            <div class="btn-group">
+                <button class="btn btn-secondary" onclick="document.getElementById('csvUpload').click()">📥 Import CSV</button>
+                <button class="btn btn-secondary" onclick="nextStep()">Add Later</button>
+            </div>
+            <input type="file" id="csvUpload" accept=".csv" style="display:none;" onchange="importContacts(event)">
+            <div class="status-message" id="contactsStatus"></div>
+            <a href="#" class="skip-link" onclick="nextStep()">Skip this step</a>
+        </div>
+        
+        <!-- Step 4: Calendar Link -->
+        <div class="wizard-card wizard-step hidden" id="step4">
+            <div class="wizard-icon">📅</div>
+            <h1 class="wizard-title">Set Your Calendar Link</h1>
+            <p class="wizard-desc">When AI suggests booking a meeting, where should it send people?</p>
+            <div class="form-group">
+                <input type="text" class="form-input" id="calendarLink" placeholder="https://calendly.com/yourname">
+            </div>
+            <button class="btn btn-primary" onclick="saveCalendarLink()">Save Calendar Link</button>
+            <div class="status-message" id="calendarStatus"></div>
+            <a href="#" class="skip-link" onclick="nextStep()">Skip this step</a>
+        </div>
+        
+        <!-- Step 5: Writing Style -->
+        <div class="wizard-card wizard-step hidden" id="step5">
+            <div class="wizard-icon">✍️</div>
+            <h1 class="wizard-title">Your Communication Style</h1>
+            <p class="wizard-desc">How do you like to communicate with partners?</p>
+            <div class="style-options">
+                <div class="style-option" onclick="selectStyle('casual', this)">
+                    <div class="emoji">😊</div>
+                    <div class="label">Casual</div>
+                </div>
+                <div class="style-option" onclick="selectStyle('professional', this)">
+                    <div class="emoji">👔</div>
+                    <div class="label">Professional</div>
+                </div>
+                <div class="style-option" onclick="selectStyle('consultative', this)">
+                    <div class="emoji">🤝</div>
+                    <div class="label">Consultative</div>
+                </div>
+            </div>
+            <button class="btn btn-primary" onclick="saveStyle()" id="styleBtn">Save Style</button>
+            <div class="status-message" id="styleStatus"></div>
+            <a href="#" class="skip-link" onclick="nextStep()">Skip this step</a>
+        </div>
+        
+        <!-- Step 6: Complete -->
+        <div class="wizard-card wizard-step hidden" id="step6">
+            <div class="success-animation">🎉</div>
+            <h1 class="wizard-title">You're All Set!</h1>
+            <p class="wizard-desc">Your AI assistant is ready to help you reach more partners and close more deals.</p>
+            <button class="btn btn-primary" onclick="completeOnboarding()">Go to Dashboard →</button>
+        </div>
+    </div>
+    
+    <script>
+        let currentStep = {{ current_step or 1 }};
+        let selectedStyle = '';
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            showStep(currentStep || 1);
+        });
+        
+        function showStep(step) {
+            // Hide all steps
+            document.querySelectorAll('.wizard-step').forEach(el => el.classList.add('hidden'));
+            
+            // Show current step
+            const stepEl = document.getElementById('step' + step);
+            if (stepEl) stepEl.classList.remove('hidden');
+            
+            // Update progress
+            document.getElementById('currentStepNum').textContent = step;
+            document.getElementById('progressBar').style.width = (step / 6 * 100) + '%';
+            
+            currentStep = step;
+        }
+        
+        function nextStep() {
+            // Save progress
+            fetch('/api/user/settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ onboarding_step: currentStep })
+            });
+            
+            showStep(currentStep + 1);
+        }
+        
+        async function importWebsite() {
+            const url = document.getElementById('websiteUrl').value.trim();
+            if (!url) {
+                document.getElementById('importStatus').textContent = 'Please enter a URL';
+                document.getElementById('importStatus').className = 'status-message error';
+                return;
+            }
+            
+            const btn = document.getElementById('importBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Importing...';
+            document.getElementById('importStatus').textContent = 'This may take 30-60 seconds...';
+            document.getElementById('importStatus').className = 'status-message';
+            
+            try {
+                const res = await fetch('/api/ai/scrape', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+                const data = await res.json();
+                
+                if (data.error) {
+                    document.getElementById('importStatus').textContent = '❌ ' + data.error;
+                    document.getElementById('importStatus').className = 'status-message error';
+                } else {
+                    document.getElementById('importStatus').textContent = '✅ Imported ' + data.added + ' items!';
+                    document.getElementById('importStatus').className = 'status-message success';
+                    setTimeout(() => nextStep(), 1500);
+                }
+            } catch (err) {
+                document.getElementById('importStatus').textContent = '❌ Import failed';
+                document.getElementById('importStatus').className = 'status-message error';
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🔍 Import Website';
+            }
+        }
+        
+        async function importContacts(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const status = document.getElementById('contactsStatus');
+            status.textContent = 'Importing...';
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                const res = await fetch('/api/partners/import', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    status.textContent = '✅ Imported ' + data.imported + ' contacts!';
+                    status.className = 'status-message success';
+                    setTimeout(() => nextStep(), 1500);
+                } else {
+                    status.textContent = '❌ ' + (data.error || 'Import failed');
+                    status.className = 'status-message error';
+                }
+            } catch (err) {
+                status.textContent = '❌ Import failed';
+                status.className = 'status-message error';
+            }
+        }
+        
+        async function saveCalendarLink() {
+            const link = document.getElementById('calendarLink').value.trim();
+            const status = document.getElementById('calendarStatus');
+            
+            try {
+                await fetch('/api/user/settings', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ calendar_link: link })
+                });
+                
+                status.textContent = '✅ Saved!';
+                status.className = 'status-message success';
+                setTimeout(() => nextStep(), 1000);
+            } catch (err) {
+                status.textContent = '❌ Failed to save';
+                status.className = 'status-message error';
+            }
+        }
+        
+        function selectStyle(style, el) {
+            selectedStyle = style;
+            document.querySelectorAll('.style-option').forEach(opt => opt.classList.remove('active'));
+            el.classList.add('active');
+        }
+        
+        async function saveStyle() {
+            if (!selectedStyle) {
+                document.getElementById('styleStatus').textContent = 'Please select a style';
+                document.getElementById('styleStatus').className = 'status-message error';
+                return;
+            }
+            
+            const presets = {
+                casual: 'Keep it casual and friendly. Use first names. Short, punchy messages. Contractions are fine.',
+                professional: 'Professional but warm. Proper grammar. Clear and concise. Business-appropriate.',
+                consultative: 'Consultative approach. Ask questions. Position as trusted advisor, not salesperson.'
+            };
+            
+            const btn = document.getElementById('styleBtn');
+            btn.disabled = true;
+            
+            try {
+                await fetch('/api/ai/knowledge', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        category: 'tone',
+                        title: 'Communication Style',
+                        content: presets[selectedStyle]
+                    })
+                });
+                
+                document.getElementById('styleStatus').textContent = '✅ Style saved!';
+                document.getElementById('styleStatus').className = 'status-message success';
+                setTimeout(() => nextStep(), 1000);
+            } catch (err) {
+                document.getElementById('styleStatus').textContent = '❌ Failed to save';
+                document.getElementById('styleStatus').className = 'status-message error';
+            } finally {
+                btn.disabled = false;
+            }
+        }
+        
+        async function completeOnboarding() {
+            await fetch('/api/user/settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ onboarding_step: 6 })
+            });
+            window.location.href = '/';
+        }
+    </script>
+</body>
+</html>

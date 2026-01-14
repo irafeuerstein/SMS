@@ -301,7 +301,7 @@
                 <div class="icon" style="background: rgba(255, 77, 106, 0.15);">👤</div>
                 <div>
                     <div>Account</div>
-                    <div class="settings-group-subtitle">Logout & app info</div>
+                    <div class="settings-group-subtitle">Password, calendar & app info</div>
                 </div>
             </div>
             <svg class="settings-group-chevron" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -309,12 +309,45 @@
             </svg>
         </div>
         <div class="settings-group-content">
-            <a href="/logout" class="btn btn-secondary btn-block mb-3" style="color: var(--error); text-decoration: none;">
-                Logout
-            </a>
+            <!-- Calendar Link -->
+            <div style="margin-bottom: 20px;">
+                <div style="font-weight: 500; margin-bottom: 8px;">📅 Calendar Link</div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px;">AI will use this when suggesting meeting bookings</div>
+                <div class="flex gap-2">
+                    <input type="text" class="form-input" id="calendarLink" placeholder="https://calendly.com/yourname" style="flex: 1;">
+                    <button class="btn btn-sm" onclick="saveCalendarLink()">Save</button>
+                </div>
+            </div>
+            
+            <!-- Change Password -->
+            <div style="margin-bottom: 20px; padding-top: 16px; border-top: 1px solid var(--border);">
+                <div style="font-weight: 500; margin-bottom: 8px;">🔒 Change Password</div>
+                <div class="form-group mb-2">
+                    <input type="password" class="form-input" id="currentPassword" placeholder="Current password">
+                </div>
+                <div class="form-group mb-2">
+                    <input type="password" class="form-input" id="newPassword" placeholder="New password (min 6 chars)">
+                </div>
+                <button class="btn btn-sm btn-secondary" onclick="changePassword()">Update Password</button>
+            </div>
+            
+            <!-- Restart Onboarding -->
+            <div style="margin-bottom: 20px; padding-top: 16px; border-top: 1px solid var(--border);">
+                <div style="font-weight: 500; margin-bottom: 8px;">🔄 Setup Wizard</div>
+                <a href="/onboarding" class="btn btn-sm btn-ghost" style="text-decoration: none;">Restart Setup Wizard</a>
+            </div>
+            
+            <!-- Logout -->
+            <div style="padding-top: 16px; border-top: 1px solid var(--border);">
+                <a href="/logout" class="btn btn-secondary btn-block mb-3" style="color: var(--error); text-decoration: none;">
+                    Logout
+                </a>
+            </div>
+            
+            <!-- Version -->
             <div style="text-align: center; padding-top: 12px; border-top: 1px solid var(--border);">
                 <div style="font-size: 0.75rem; color: var(--text-muted);">SilverSky SMS</div>
-                <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">Version 1.2.0</div>
+                <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">Version 1.3.0</div>
             </div>
         </div>
     </div>
@@ -676,6 +709,66 @@ async function deleteKnowledge(id) {
     showToast('Deleted'); loadKnowledge();
 }
 
+// Calendar Link
+async function loadCalendarLink() {
+    try {
+        const res = await fetch('/api/user/settings');
+        const data = await res.json();
+        if (data.calendar_link) {
+            document.getElementById('calendarLink').value = data.calendar_link;
+        }
+    } catch (err) { console.error(err); }
+}
+
+async function saveCalendarLink() {
+    const link = document.getElementById('calendarLink').value.trim();
+    try {
+        await fetch('/api/user/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ calendar_link: link })
+        });
+        showToast('Calendar link saved!');
+    } catch (err) {
+        showToast('Failed to save', 'error');
+    }
+}
+
+// Change Password
+async function changePassword() {
+    const current = document.getElementById('currentPassword').value;
+    const newPw = document.getElementById('newPassword').value;
+    
+    if (!current || !newPw) {
+        showToast('Fill in both fields', 'warning');
+        return;
+    }
+    
+    if (newPw.length < 6) {
+        showToast('Password must be at least 6 characters', 'warning');
+        return;
+    }
+    
+    try {
+        const res = await fetch('/api/user/change-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ current_password: current, new_password: newPw })
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+            showToast('Password updated!');
+            document.getElementById('currentPassword').value = '';
+            document.getElementById('newPassword').value = '';
+        } else {
+            showToast(data.error || 'Failed to update', 'error');
+        }
+    } catch (err) {
+        showToast('Failed to update password', 'error');
+    }
+}
+
 document.getElementById('newRegion').addEventListener('keydown', e => { if (e.key === 'Enter') addRegion(); });
 document.getElementById('newTsd').addEventListener('keydown', e => { if (e.key === 'Enter') addTsd(); });
 document.getElementById('newProduct').addEventListener('keydown', e => { if (e.key === 'Enter') addProduct(); });
@@ -683,5 +776,6 @@ document.getElementById('newTag').addEventListener('keydown', e => { if (e.key =
 
 loadData();
 loadKnowledge();
+loadCalendarLink();
 </script>
 {% endblock %}

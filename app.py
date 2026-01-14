@@ -163,6 +163,22 @@ class AISettings(db.Model):
     setting_value = db.Column(db.Text)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+class UserSettings(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    onboarding_step = db.Column(db.Integer, default=0)  # 0=not started, 6=complete
+    calendar_link = db.Column(db.String(500))
+    custom_password = db.Column(db.String(200))  # If set, overrides env var
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+def get_user_settings():
+    """Get or create user settings"""
+    settings = UserSettings.query.first()
+    if not settings:
+        settings = UserSettings()
+        db.session.add(settings)
+        db.session.commit()
+    return settings
+
 # Auth decorator
 def login_required(f):
     @wraps(f)
@@ -273,8 +289,23 @@ def send_notification(partner_name, message_body):
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        if request.form['username'] == APP_USERNAME and request.form['password'] == APP_PASSWORD:
+        username = request.form['username']
+        password = request.form['password']
+        
+        # Check custom password first, then fall back to env var
+        user_settings = UserSettings.query.first()
+        valid_password = APP_PASSWORD
+        if user_settings and user_settings.custom_password:
+            valid_password = user_settings.custom_password
+        
+        if username == APP_USERNAME and password == valid_password:
             session['logged_in'] = True
+            
+            # Check if onboarding needed
+            settings = get_user_settings()
+            if settings.onboarding_step < 6:
+                return redirect(url_for('onboarding'))
+            
             return redirect(url_for('index'))
         return render_template('login.html', error='Invalid credentials')
     return render_template('login.html')
@@ -284,10 +315,17 @@ def logout():
     session.pop('logged_in', None)
     return redirect(url_for('login'))
 
+@app.route('/onboarding')
+@login_required
+def onboarding():
+    settings = get_user_settings()
+    return render_template('onboarding.html', current_step=settings.onboarding_step)
+
 @app.route('/')
 @login_required
 def index():
-    return render_template('index.html')
+    settings = get_user_settings()
+    return render_template('index.html', onboarding_complete=(settings.onboarding_step >= 6), onboarding_step=settings.onboarding_step)
 
 @app.route('/partners')
 @login_required
@@ -2018,6 +2056,181 @@ def init_db():
             for name in default_products:
                 db.session.add(Product(name=name))
             db.session.commit()
+
+# API: User Settings (onboarding, calendar, password)
+@app.route('/api/user/settings', methods=['GET', 'PUT'])
+@login_required
+def api_user_settings():
+    settings = get_user_settings()
+    
+    if request.method == 'PUT':
+        data = request.json
+        if 'onboarding_step' in data:
+            settings.onboarding_step = data['onboarding_step']
+        if 'calendar_link' in data:
+            settings.calendar_link = data['calendar_link']
+        db.session.commit()
+        return jsonify({'success': True})
+    
+    return jsonify({
+        'onboarding_step': settings.onboarding_step,
+        'calendar_link': settings.calendar_link or ''
+    })
+
+@app.route('/api/user/change-password', methods=['POST'])
+@login_required
+def api_change_password():
+    data = request.json
+    current_password = data.get('current_password', '')
+    new_password = data.get('new_password', '')
+    
+    if not new_password or len(new_password) < 6:
+        return jsonify({'success': False, 'error': 'Password must be at least 6 characters'}), 400
+    
+    # Check current password
+    settings = get_user_settings()
+    valid_password = settings.custom_password if settings.custom_password else APP_PASSWORD
+    
+    if current_password != valid_password:
+        return jsonify({'success': False, 'error': 'Current password is incorrect'}), 400
+    
+    # Set new password
+    settings.custom_password = new_password
+    db.session.commit()
+    
+    return jsonify({'success': True})
+
+@app.route('/api/user/onboarding-status')
+@login_required
+def api_onboarding_status():
+    settings = get_user_settings()
+    knowledge_count = AIKnowledge.query.count()
+    partner_count = Partner.query.count()
+    
+    # Calculate completion based on what's actually done
+    steps_complete = {
+        '1': knowledge_count > 0,
+        '2': knowledge_count >= 3,
+        '3': AIKnowledge.query.filter_by(category='objections').count() > 0,
+        '4': AIKnowledge.query.filter_by(category='tone').count() > 0,
+        '5': partner_count > 0,
+        '6': settings.calendar_link is not None and settings.calendar_link != ''
+    }
+    
+    return jsonify({
+        'current_step': settings.onboarding_step,
+        'steps_complete': steps_complete,
+        'knowledge_count': knowledge_count,
+        'partner_count': partner_count,
+        'calendar_link': settings.calendar_link or ''
+    })
+
+@app.route('/api/user/onboarding-step', methods=['POST'])
+@login_required
+def api_update_onboarding_step():
+    data = request.json
+    step = data.get('step', 0)
+    
+    settings = get_user_settings()
+    settings.onboarding_step = max(settings.onboarding_step, step)  # Only go forward
+    db.session.commit()
+    
+    return jsonify({'success': True, 'step': settings.onboarding_step})
+
+@app.route('/api/user/calendar-link', methods=['GET', 'POST'])
+@login_required
+def api_calendar_link():
+    settings = get_user_settings()
+    
+    if request.method == 'POST':
+        data = request.json
+        settings.calendar_link = data.get('calendar_link', '').strip()
+        db.session.commit()
+        
+        # Also save to AI knowledge so AI knows about it
+        existing = AIKnowledge.query.filter_by(category='general', title='Calendar Link').first()
+        if settings.calendar_link:
+            if existing:
+                existing.content = f"When scheduling meetings, use this calendar link: {settings.calendar_link}"
+            else:
+                knowledge = AIKnowledge(
+                    category='general',
+                    title='Calendar Link',
+                    content=f"When scheduling meetings, use this calendar link: {settings.calendar_link}"
+                )
+                db.session.add(knowledge)
+            db.session.commit()
+        
+        return jsonify({'success': True})
+    
+    return jsonify({'calendar_link': settings.calendar_link or ''})
+
+@app.route('/api/user/change-password', methods=['POST'])
+@login_required
+def api_change_password():
+    data = request.json
+    current_password = data.get('current_password', '')
+    new_password = data.get('new_password', '')
+    confirm_password = data.get('confirm_password', '')
+    
+    if not new_password or len(new_password) < 6:
+        return jsonify({'error': 'New password must be at least 6 characters'}), 400
+    
+    if new_password != confirm_password:
+        return jsonify({'error': 'Passwords do not match'}), 400
+    
+    # Verify current password
+    settings = get_user_settings()
+    valid_password = settings.custom_password if settings.custom_password else APP_PASSWORD
+    
+    if current_password != valid_password:
+        return jsonify({'error': 'Current password is incorrect'}), 400
+    
+    # Update password
+    settings.custom_password = new_password
+    db.session.commit()
+    
+    return jsonify({'success': True})
+
+@app.route('/api/user/skip-onboarding', methods=['POST'])
+@login_required
+def api_skip_onboarding():
+    settings = get_user_settings()
+    settings.onboarding_step = 6  # Mark as complete
+    db.session.commit()
+    return jsonify({'success': True})
+
+@app.route('/api/stats/unread-count')
+@login_required
+def api_unread_count():
+    """Get unread message count for nav badge"""
+    # Get all partners with unread inbound messages
+    subquery = db.session.query(
+        Message.partner_id,
+        db.func.max(Message.created_at).label('last_outbound')
+    ).filter(
+        Message.direction == 'outbound'
+    ).group_by(Message.partner_id).subquery()
+    
+    unread = 0
+    partners = Partner.query.filter_by(archived=False, opted_out=False).all()
+    
+    for partner in partners:
+        last_inbound = Message.query.filter_by(
+            partner_id=partner.id, 
+            direction='inbound'
+        ).order_by(Message.created_at.desc()).first()
+        
+        last_outbound = Message.query.filter_by(
+            partner_id=partner.id,
+            direction='outbound'
+        ).order_by(Message.created_at.desc()).first()
+        
+        if last_inbound:
+            if not last_outbound or last_inbound.created_at > last_outbound.created_at:
+                unread += 1
+    
+    return jsonify({'unread': unread})
 
 # Initialize scheduler for scheduled messages
 def init_scheduler():
